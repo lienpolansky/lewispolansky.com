@@ -133,3 +133,20 @@ test("names are cleaned and kept short", async () => {
   assert.equal(leo.name, "Leo the very long name t"); const r = await t.call("POST", "/ledger/v1/name", { name: "Mayor Leo" }, leo); assert.equal(r.name, "Mayor Leo");
   assert.equal((await t.call("POST", "/ledger/v1/name", { name: "   " }, leo)).status, 400);
 });
+
+test("version-proof: answers carry api and schema, unknown fields are ignored, unknown keys are kept", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  const m = await t.me(leo); assert.equal(m.api, "v1"); assert.equal(m.schema, 1);
+  const r = await t.call("POST", "/ledger/v1/commit", { batch: "fut-00001", ops: [{ op: "pay", to: leo.account, amount: 10, sparkle: true }], from_v9: { x: 1 } }, host);
+  assert.equal(r.status, 201); assert.equal((await t.me(leo)).cash, 10);
+  const l = await t.call("POST", "/ledger/v1/look", { title: "a_title_from_a_later_version", hat: "cowboy", glow: "blue" }, leo);
+  assert.equal(l.ok, true); assert.equal(l.title, "a_title_from_a_later_version"); assert.equal(l.hat, "cowboy"); assert.equal(l.skin, null);
+  await t.call("POST", "/ledger/v1/look", { skin: "skin_03" }, leo);                     // a field left out stays as it was
+  const w = await t.call("GET", "/ledger/v1/world", null, leo); const me = w.accounts.find(a => a.id === leo.account);
+  assert.deepEqual([me.title, me.hat, me.skin], ["a_title_from_a_later_version", "cowboy", "skin_03"]);
+  assert.equal((await t.call("POST", "/ledger/v1/look", { title: 7 }, leo)).status, 400);
+  const rows = t.env.LEDGER.raw.prepare("SELECT DISTINCT sv FROM entries UNION SELECT DISTINCT sv FROM accounts").all().map(x => x.sv); assert.deepEqual(rows, [1]);
+  assert.equal(t.env.LEDGER.raw.prepare("SELECT value FROM meta WHERE key = 'schema'").get().value, "1");
+  const cols = t.env.LEDGER.raw.prepare("SELECT name FROM pragma_table_info('owners')").all().map(c => c.name);
+  for (const bad of ["x", "y", "z", "pos", "rot", "yaw", "speed"]) assert.ok(!cols.includes(bad), "no positions or physics in the ledger");
+});

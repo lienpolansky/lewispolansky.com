@@ -6,6 +6,23 @@ ledger at `https://lewispolansky.com/ledger/v1/`. Each game keeps its local save
 Code: `functions/ledger/[[path]].js`. Schema: `ledger/schema.sql`. Tests: `node --test ledger/test` (offline) and
 `ledger/test/live.mjs` (against a running copy).
 
+## Versions and what is stored (owner's rules)
+
+- **Stable string ids only.** Every place, vehicle model, unlock, title, hat and skin is named by a stable string key (catalogue
+  id, model name, title key). Never send an array index or an enum number.
+- **Versioned API.** Every answer carries `"api":"v1"` and `"schema":1`. A breaking change would get a new prefix (`/ledger/v2/`)
+  beside this one, and `/ledger/v1/` keeps working for older games.
+- **Additive migrations only.** New tables and new nullable columns are allowed; renames, drops and changed meanings are not.
+  Every row records the schema version it was written under (`sv`).
+- **Unknown is kept.**
+  - The server ignores request fields it does not know.
+  - The server keeps keys it has never heard of, for example a title from a later game.
+  - A client ignores answer fields it does not know.
+  - A client keeps ids it does not know: it never deletes or rewrites them, it just does not draw them.
+- **Durable facts only.**
+  - Stored: accounts, names, wallets, ownership, unlocks, the chosen title, hat and skin, trades, and the transaction log.
+  - Never stored: positions, rotations, vehicle physics, session state, or anything that changes every second.
+
 ## Units and ids
 
 - Money is whole town dollars, the game's amounts after `EconomyMoney.MoneyScale`. It is never negative.
@@ -42,18 +59,18 @@ the answer is `503`.
 
 ### `GET /ledger/v1/me`
 
-`{"ok":true,"account","name","cash","imported":bool,"things":[{"thing","level","paid","since"}],"unlocks":["car_van",…],"seq"}`
+`{"ok":true,"account","name","cash","imported":bool,"title","hat","skin","things":[{"thing","level","paid","since"}],"unlocks":["car_van",…],"seq"}`
 
 ### `GET /ledger/v1/world`
 
-`{"ok":true,"accounts":[{"id","name","cash"}],"owners":[{"thing","account","level"}],"seq"}`. This is the whole town: draw the map,
+`{"ok":true,"accounts":[{"id","name","cash","title","hat","skin"}],"owners":[{"thing","account","level"}],"seq"}`. This is the whole town: draw the map,
 the Chamber and Lillow from it.
 
 ### `GET /ledger/v1/feed?after=<seq>&limit=<1..500>`
 
 `{"ok":true,"entries":[{"seq","at","batch","host","kind","account","other","thing","amount","why"}],"seq":<last seq returned>}`.
-Poll it with the last `seq` to follow what happens anywhere in town. `kind` is one of `join import pay spend give buy sell upgrade
-unlock transfer pass`. `amount` is signed, as seen from `account`. A give or transfer writes one line for each side.
+Poll it with the last `seq` to follow what happens anywhere in town. `kind` is one of `join import name look pay spend give buy
+sell upgrade unlock transfer pass`. New kinds may appear later; skip the ones you do not know. `amount` is signed, as seen from `account`. A give or transfer writes one line for each side.
 
 ### `POST /ledger/v1/commit`
 
@@ -99,7 +116,18 @@ This works once per account. Body: `{"cash":<n>,"things":[{"thing","level","paid
 
 ### `POST /ledger/v1/name`
 
-`{"name":"…"}` → `{"ok":true,"name"}`.
+`{"name":"…"}` → `{"ok":true,"name"}`. This writes a `name` line to the feed.
+
+### `POST /ledger/v1/look`
+
+`{"title":"mayor","hat":"cowboy","skin":"skin_03"}` → `{"ok":true,"title","hat","skin"}`.
+
+- Each field is a stable key, or `null` to clear it.
+- A field left out stays as it is.
+- Keys the server does not know are kept.
+- This writes a `look` line to the feed.
+
+`me` and `world` return each account's `title`, `hat` and `skin`.
 
 ### `GET /ledger/v1/health`
 

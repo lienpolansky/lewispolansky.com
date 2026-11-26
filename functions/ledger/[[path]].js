@@ -8,10 +8,14 @@
 //   POST /ledger/v1/commit     a host's batch of changes: all of it or none, once per batch id   (signed by the host)
 //   POST /ledger/v1/import     bring a local save in, once per account         (signed)
 //   POST /ledger/v1/name       change my name                                  (signed)
+//   POST /ledger/v1/look       my chosen title, hat and skin, by their keys      (signed)
 //   GET  /ledger/v1/health
 // Signed means headers X-Ledger-Account, X-Ledger-Time (ms) and X-Ledger-Sig = hex HMAC-SHA256(secret, METHOD \n path?query \n time
 // \n hex SHA-256 of the body). Requests more than five minutes off the server's clock are refused. Nothing here touches /gtad.
 
+// Versions: this file answers /ledger/v1/ for as long as games that speak v1 exist; a v2 would be a new prefix beside it. Every answer
+// carries api and schema; requests' unknown fields are ignored; ids are opaque strings, so keys this server has never heard of are kept.
+const API = "v1", SCHEMA = 1;
 const PREFIX = "/ledger/v1/", SKEW = 5 * 60 * 1000, MOST = 1e12, MOST_OPS = 64, MOST_IMPORT_CASH = 50_000_000, MOST_BODY = 65536;
 const ID = /^[A-Za-z0-9_@.,:+-]{1,64}$/, ACCOUNT = /^a_[0-9a-f]{24}$/, BATCH = /^[A-Za-z0-9_-]{8,64}$/;
 const enc = new TextEncoder();
@@ -38,7 +42,8 @@ export async function route(request, env, now = Date.now()) {
   if (what === "feed" && request.method === "GET") return feed(db, url);
   if (what === "commit" && request.method === "POST") return commit(db, me, parse(body), now);
   if (what === "import" && request.method === "POST") return importSave(db, me, parse(body), now);
-  if (what === "name" && request.method === "POST") return rename(db, me, parse(body));
+  if (what === "name" && request.method === "POST") return rename(db, me, parse(body), now);
+  if (what === "look" && request.method === "POST") return look(db, me, parse(body), now);
   return json({ ok: false, error: "not found" }, 404);
 }
 
@@ -71,22 +76,33 @@ async function makeAccount(request, env, db, body, now) {
   return json({ ok: true, account: id, secret, name }, 201);
 }
 function cleanName(n) { if (typeof n !== "string") return null; n = n.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 24); return n.length ? n : null; }
-async function rename(db, me, b) {
+async function rename(db, me, b, now) {
   const name = cleanName(b && b.name); if (!name) return json({ ok: false, error: "bad request", why: "name" }, 400);
-  await db.prepare("UPDATE accounts SET name = ? WHERE id = ?").bind(name, me.id).run(); return json({ ok: true, name });
+  await db.batch([db.prepare("UPDATE accounts SET name = ? WHERE id = ?").bind(name, me.id), db.prepare("INSERT INTO entries (at, kind, account, why) VALUES (?, 'name', ?, ?)").bind(now, me.id, name)]);
+  return json({ ok: true, name });
+}
+// The look a player chose, by stable keys: { title, hat, skin }, each a key or null to clear it; a field left out stays as it is.
+async function look(db, me, b, now) {
+  if (!b || typeof b !== "object") return json({ ok: false, error: "bad request", why: "look" }, 400);
+  const set = [], args = [];
+  for (const f of ["title", "hat", "skin"]) if (f in b) { const v = b[f]; if (v !== null && (typeof v !== "string" || !ID.test(v))) return json({ ok: false, error: "bad request", why: f }, 400); set.push(f + " = ?"); args.push(v); }
+  if (!set.length) return json({ ok: false, error: "bad request", why: "look" }, 400);
+  const said = ["title", "hat", "skin"].filter(f => f in b).map(f => f + "=" + (b[f] ?? "")).join(" ");
+  await db.batch([db.prepare("UPDATE accounts SET " + set.join(", ") + " WHERE id = ?").bind(...args, me.id), db.prepare("INSERT INTO entries (at, kind, account, why) VALUES (?, 'look', ?, ?)").bind(now, me.id, said)]);
+  const a = await db.prepare("SELECT title, hat, skin FROM accounts WHERE id = ?").bind(me.id).first(); return json({ ok: true, ...a });
 }
 
 // ---------- reading ----------
 async function mine(db, me) {
   const [a, things, unlocks] = await Promise.all([
-    db.prepare("SELECT id, name, cash, imported FROM accounts WHERE id = ?").bind(me.id).first(),
+    db.prepare("SELECT id, name, cash, imported, title, hat, skin FROM accounts WHERE id = ?").bind(me.id).first(),
     db.prepare("SELECT thing, level, paid, since FROM owners WHERE account = ? ORDER BY thing").bind(me.id).all(),
     db.prepare("SELECT unlock, since FROM unlocks WHERE account = ? ORDER BY unlock").bind(me.id).all()]);
-  return json({ ok: true, account: a.id, name: a.name, cash: a.cash, imported: !!a.imported, things: things.results, unlocks: unlocks.results.map(u => u.unlock), seq: await lastSeq(db) });
+  return json({ ok: true, account: a.id, name: a.name, cash: a.cash, imported: !!a.imported, title: a.title, hat: a.hat, skin: a.skin, things: things.results, unlocks: unlocks.results.map(u => u.unlock), seq: await lastSeq(db) });
 }
 async function world(db) {
   const [accounts, owners] = await Promise.all([
-    db.prepare("SELECT id, name, cash FROM accounts ORDER BY created").all(),
+    db.prepare("SELECT id, name, cash, title, hat, skin FROM accounts ORDER BY created").all(),
     db.prepare("SELECT thing, account, level FROM owners ORDER BY thing").all()]);
   return json({ ok: true, accounts: accounts.results, owners: owners.results, seq: await lastSeq(db) });
 }
@@ -208,4 +224,4 @@ async function importSave(db, me, b, now) {
 }
 
 function parse(s) { try { return JSON.parse(s); } catch (e) { return null; } }
-function json(o, status = 200) { return new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }); }
+function json(o, status = 200) { return new Response(JSON.stringify({ api: API, schema: SCHEMA, ...o }), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }); }
