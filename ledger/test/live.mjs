@@ -22,6 +22,10 @@ const r = await call("POST", "/ledger/v1/commit", { batch: "bad-" + run, ops: [{
 assert.equal(r.status, 409); assert.equal(r.why, "short");
 const l = await call("GET", "/ledger/v1/me", null, leo), s = await call("GET", "/ledger/v1/me", null, sam);
 assert.equal(l.cash + s.cash, 600000 + 60000, "only one paid for the hall, and the failed batch left no trace");
-const again = await call("POST", "/ledger/v1/commit", { batch: "seed-" + run, ops: [{ op: "pay", to: leo.account, amount: 600000 }] }, A);
+const seed = [{ op: "pay", to: leo.account, amount: 600000 }, { op: "pay", to: sam.account, amount: 600000 }];
+const again = await call("POST", "/ledger/v1/commit", { batch: "seed-" + run, ops: seed }, A);
 assert.equal(again.status, 200); assert.equal(again.repeat, true);
+const reused = await call("POST", "/ledger/v1/commit", { batch: "seed-" + run, ops: [{ op: "pay", to: leo.account, amount: 1 }] }, A);
+assert.equal(reused.status, 409); assert.equal(reused.error, "batch id reused");
+assert.equal((await call("GET", "/ledger/v0/health")).status, 404);
 console.log("LIVE ok:", BASE, "hall went to", x.status === 201 ? "Leo" : "Sam");

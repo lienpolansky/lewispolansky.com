@@ -16,6 +16,7 @@
 // Versions: this file answers /ledger/v1/ for as long as games that speak v1 exist; a v2 would be a new prefix beside it. Every answer
 // carries api and schema; requests' unknown fields are ignored; ids are opaque strings, so keys this server has never heard of are kept.
 const API = "v1", SCHEMA = 1;
+const VERSIONS = ["v1"], LIMITS = { account: [600, 60_000], join: [30, 3_600_000] }, MOST_CASH = 1e15;
 const PREFIX = "/ledger/v1/", SKEW = 5 * 60 * 1000, MOST = 1e12, MOST_OPS = 64, MOST_IMPORT_CASH = 50_000_000, MOST_BODY = 65536;
 const ID = /^[A-Za-z0-9_@.,:+-]{1,64}$/, ACCOUNT = /^a_[0-9a-f]{24}$/, BATCH = /^[A-Za-z0-9_-]{8,64}$/;
 const enc = new TextEncoder();
@@ -27,15 +28,22 @@ export async function onRequest({ request, env }) {
 
 export async function route(request, env, now = Date.now()) {
   const url = new URL(request.url); const path = url.pathname;
-  if (!path.startsWith(PREFIX)) return json({ ok: false, error: "not found" }, 404);
+  if (!path.startsWith(PREFIX)) {                               // /ledger/ lists the versions; another version is not served here
+    const v = path.replace(/^\/ledger\/?/, "").split("/")[0];
+    return json(v ? { ok: false, error: "unknown version", version: v, versions: VERSIONS } : { ok: true, versions: VERSIONS }, v ? 404 : 200);
+  }
   const what = path.slice(PREFIX.length); const db = env.LEDGER;
   if (what === "health") return json({ ok: true, ledger: !!db });
   if (!db) return json({ ok: false, error: "ledger not set up" }, 503);
+  if (Number(request.headers.get("Content-Length") || 0) > MOST_BODY) return json({ ok: false, error: "too big", most: MOST_BODY }, 413);
   const body = request.method === "POST" ? await request.text() : "";
-  if (body.length > MOST_BODY) return json({ ok: false, error: "too big" }, 413);
+  if (enc.encode(body).length > MOST_BODY) return json({ ok: false, error: "too big", most: MOST_BODY }, 413);
   if (what === "accounts" && request.method === "POST") return makeAccount(request, env, db, body, now);
+  const t = Number(request.headers.get("X-Ledger-Time"));
+  if (request.headers.get("X-Ledger-Account") && Number.isFinite(t) && Math.abs(now - t) > SKEW) return json({ ok: false, error: "clock", now }, 401);
   const me = await signedBy(request, db, url, body, now);
   if (!me) return json({ ok: false, error: "unsigned" }, 401);
+  const slow = await limit(db, "a:" + me.id, LIMITS.account, now); if (slow) return slow;
   await db.prepare("UPDATE accounts SET seen = ? WHERE id = ?").bind(now, me.id).run();
   if (what === "me" && request.method === "GET") return mine(db, me);
   if (what === "world" && request.method === "GET") return world(db);
@@ -60,6 +68,13 @@ async function signedBy(request, db, url, body, now) {
   const a = await db.prepare("SELECT id, secret, name, cash, imported FROM accounts WHERE id = ?").bind(id).first(); if (!a) return null;
   return same(await signature(a.secret, request.method, url.pathname + url.search, time, body), sig) ? a : null;
 }
+// At most n requests a window for a key; the answer to one over says when to try again. Old windows go as new ones start.
+async function limit(db, key, [n, ms], now) {
+  const w = Math.floor(now / ms);
+  const r = await db.prepare("INSERT INTO hits (key, window, n) VALUES (?, ?, 1) ON CONFLICT (key, window) DO UPDATE SET n = n + 1 RETURNING n").bind(key, w).first();
+  if (r.n === 1) await db.prepare("DELETE FROM hits WHERE key = ? AND window < ?").bind(key, w).run();
+  return r.n > n ? json({ ok: false, error: "slow down", retry_ms: (w + 1) * ms - now }, 429) : null;
+}
 // The game's token is the one its /gtad updater already carries: worked out from the project's PASSCODE, never stored here.
 export const gameToken = async passcode => (await hmac(passcode, "gtad updater v1")).slice(0, 32);
 
@@ -67,6 +82,7 @@ export const gameToken = async passcode => (await hmac(passcode, "gtad updater v
 async function makeAccount(request, env, db, body, now) {
   if (!env.PASSCODE) return json({ ok: false, error: "closed" }, 503);
   if (!same(request.headers.get("X-Gtad-Token") || "", await gameToken(env.PASSCODE))) return json({ ok: false, error: "ask Lewis for the link" }, 401);
+  const ip = request.headers.get("CF-Connecting-IP") || "local"; const slow = await limit(db, "j:" + (await sha256("ledger ip " + ip)).slice(0, 24), LIMITS.join, now); if (slow) return slow;
   const b = parse(body); const name = cleanName(b && b.name); if (!name) return json({ ok: false, error: "bad request", why: "name" }, 400);
   const id = "a_" + hex(crypto.getRandomValues(new Uint8Array(12))), secret = hex(crypto.getRandomValues(new Uint8Array(32)));
   await db.batch([
@@ -162,19 +178,22 @@ async function commit(db, host, b, now) {
   if (!b || typeof b.batch !== "string" || !BATCH.test(b.batch) || !Array.isArray(b.ops) || !b.ops.length || b.ops.length > MOST_OPS) return json({ ok: false, error: "bad request", why: "batch" }, 400);
   for (let i = 0; i < b.ops.length; i++) { const bad = check(b.ops[i]); if (bad) return json({ ok: false, error: "bad request", op: i, why: bad }, 400); }
   const id = host.id + ":" + b.batch;                         // batch ids are the host's own; two hosts may pick the same one
-  const before = await answer(db, id); if (before) return before;
-  const list = [db.prepare("INSERT INTO batches (id, host, at, first_seq, entries) VALUES (?, ?, ?, NULL, 0)").bind(id, host.id, now)];
+  const digest = await sha256(JSON.stringify(b.ops.map(o => { const k = {}; for (const f of ["op", ...OPS[o.op], "why"]) if (o[f] != null) k[f] = o[f]; return k; })));
+  const before = await answer(db, id, false, digest); if (before) return before;
+  const list = [db.prepare("INSERT INTO batches (id, host, at, first_seq, entries, digest) VALUES (?, ?, ?, NULL, 0, ?)").bind(id, host.id, now, digest)];
   for (const op of b.ops) list.push(...statements(db, id, host.id, op, now));
   list.push(db.prepare("UPDATE batches SET first_seq = (SELECT MIN(seq) FROM entries WHERE batch = ?), entries = (SELECT COUNT(*) FROM entries WHERE batch = ?) WHERE id = ?").bind(id, id, id));
   try { await db.batch(list); }
   catch (e) {
-    const again = await answer(db, id); if (again) return again;      // the same batch landed meanwhile from a retry
+    const again = await answer(db, id, false, digest); if (again) return again;      // the same batch landed meanwhile from a retry
     return json({ ok: false, error: "conflict", ...(await why(db, b.ops)) }, 409);
   }
-  return answer(db, id, true);
+  return answer(db, id, true, digest);
 }
-async function answer(db, id, fresh = false) {
-  const r = await db.prepare("SELECT first_seq, entries FROM batches WHERE id = ?").bind(id).first(); if (!r) return null;
+// A batch already in the books: the same ops get the first answer again; other ops under the same id are refused.
+async function answer(db, id, fresh, digest) {
+  const r = await db.prepare("SELECT first_seq, entries, digest FROM batches WHERE id = ?").bind(id).first(); if (!r) return null;
+  if (r.digest !== digest) return json({ ok: false, error: "batch id reused", why: "this batch id was already used for other ops; use a new id" }, 409);
   return json({ ok: true, repeat: !fresh, first: r.first_seq, entries: r.entries, seq: await lastSeq(db) }, fresh ? 201 : 200);
 }
 // Why a batch failed: walk its ops against the books as they are now, keeping track of what the earlier ops would have done.
@@ -187,9 +206,9 @@ async function why(db, ops) {
     const o = ops[i], fail = (w, extra = {}) => ({ op: i, why: w, ...extra });
     for (const a of [o.to, o.from, o.who].filter(Boolean)) if ((await money(a)) === null) return fail("no account", { account: a });
     const debit = async (a, n) => { if ((await money(a)) < n) return true; cash[a] -= n; return false; };
-    if (o.op === "pay") cash[o.to] += o.amount;
+    if (o.op === "pay") { cash[o.to] += o.amount; if (cash[o.to] > MOST_CASH) return fail("too much", { account: o.to }); }
     else if (o.op === "spend") { if (await debit(o.from, o.amount)) return fail("short", { account: o.from, need: o.amount, has: cash[o.from] }); }
-    else if (o.op === "give") { if (await debit(o.from, o.amount)) return fail("short", { account: o.from, need: o.amount, has: cash[o.from] }); cash[o.to] += o.amount; }
+    else if (o.op === "give") { if (await debit(o.from, o.amount)) return fail("short", { account: o.from, need: o.amount, has: cash[o.from] }); cash[o.to] += o.amount; if (cash[o.to] > MOST_CASH) return fail("too much", { account: o.to }); }
     else if (o.op === "buy") { const w = await owner(o.thing); if (w) return fail("owned", { thing: o.thing, owner: w.account }); if (await debit(o.who, o.price)) return fail("short", { account: o.who, need: o.price, has: cash[o.who] }); own[o.thing] = { account: o.who, level: 0 }; }
     else if (o.op === "sell") { const w = await owner(o.thing); if (!w || w.account !== o.who) return fail("not the owner", { thing: o.thing }); own[o.thing] = null; cash[o.who] += o.price; }
     else if (o.op === "upgrade") { const w = await owner(o.thing); if (!w || w.account !== o.who) return fail("not the owner", { thing: o.thing }); if (w.level !== o.level - 1) return fail("wrong level", { thing: o.thing, level: w.level }); if (await debit(o.who, o.cost)) return fail("short", { account: o.who, need: o.cost, has: cash[o.who] }); w.level = o.level; }

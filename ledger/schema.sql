@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   id        TEXT PRIMARY KEY,                    -- "a_" + 24 hex, made by the server
   secret    TEXT NOT NULL,                       -- 64 hex; the key for this account's request signatures (HMAC-SHA256)
   name      TEXT NOT NULL,
-  cash      INTEGER NOT NULL DEFAULT 0 CHECK (cash >= 0),
+  cash      INTEGER NOT NULL DEFAULT 0 CHECK (cash >= 0 AND cash <= 1000000000000000),
   imported  INTEGER NOT NULL DEFAULT 0,          -- 1 once its local save was brought in (only ever once)
   title     TEXT,                                -- the chosen look, by stable keys ("mayor", "cake_deliverer"); unknown keys are kept
   hat       TEXT,
@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS batches (
   at        INTEGER NOT NULL,
   first_seq INTEGER,
   entries   INTEGER NOT NULL,
+  digest    TEXT,                                -- SHA-256 of the batch's ops: the same id with other ops is refused
   sv        INTEGER NOT NULL DEFAULT 1
 );
 
@@ -71,6 +72,10 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE INDEX IF NOT EXISTS entries_by_account ON entries(account, seq);
 CREATE TRIGGER IF NOT EXISTS entries_no_update BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'the ledger is append only'); END;
 CREATE TRIGGER IF NOT EXISTS entries_no_delete BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT, 'the ledger is append only'); END;
+
+-- Rate limits: requests counted per key (an account, or a hashed address for new accounts) per time window. Old windows are
+-- cleared as new ones start.
+CREATE TABLE IF NOT EXISTS hits (key TEXT NOT NULL, window INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (key, window));
 
 -- A guard row: a batch inserts NULL here when one of its conditions does not hold, which fails the whole batch.
 CREATE TABLE IF NOT EXISTS guard (ok INTEGER NOT NULL, why TEXT);
