@@ -98,7 +98,8 @@ h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(-
 .dl svg { width: 1.1em; height: 1.1em; fill: currentColor; vertical-align: -.15em; margin-right: 8px; }
 .here { font: 500 11px 'IBM Plex Mono', monospace; color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }
 .phone { margin: 12px 18px 0; padding: 10px 12px; border-left: 3px solid var(--gold); background: var(--panel2); font-size: 14px; }
-.winnote { font-size: 12.5px; color: var(--mut); margin: -2px 0 2px; }
+.winnote { font-size: 12.5px; color: var(--mut); margin: -2px 0 2px; line-height: 1.5; }
+.winnote b { color: var(--ink); font-weight: 600; }
 .ask { padding: 18px; margin: 16px 18px 18px; border-left: 3px solid var(--gold); background: var(--panel2); font-size: 17px; }
 .ask small { display: block; color: var(--mut); font-size: 13px; margin-top: 4px; }
 
@@ -275,7 +276,8 @@ function draw(D, locked) {
     a.innerHTML = '<span>' + ICON[id === 'windows' ? 'windows' : 'mac'] + (ok ? 'Download for ' + p[0] : p[0] + ': coming soon') + '<span class="sub">' + p[1] + (ok && b.version ? ', ' + b.version : '') + (ok && b.bytes ? ', ' + size(b.bytes) : '') + '</span></span>';
     if (k === 0 && ok && mine !== 'phone') { var h = document.createElement('div'); h.className = 'here'; h.textContent = 'Picked for this computer'; get.appendChild(h); }
     get.appendChild(a);
-    if (id === 'windows' && ok) { var n = document.createElement('p'); n.className = 'winnote'; n.textContent = 'The program is called SF Bayside.exe in this build.'; get.appendChild(n); }
+    // a new, unsigned game trips SmartScreen and some antivirus: three short lines on the way past
+    if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>SF Bayside.exe</b> in this build. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find SF Bayside or Grand Towing, <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
     // Gatekeeper blocks a game that is not notarised ("Apple could not verify..."): the way past it, short.
     if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>If your Mac says it could not verify the app:</b><ol><li>Unzip it and drag it to Applications.</li><li>Right-click the app, choose <b>Open</b>, then <b>Open</b> again.</li><li>Still stuck? <b>System Settings &gt; Privacy &amp; Security &gt; Open Anyway</b>.</li></ol>Or in Terminal:<code>xattr -dr com.apple.quarantine "/Applications/Grand Towing and Delivery.app"</code>'; get.appendChild(m); }
   });
