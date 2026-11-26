@@ -17,7 +17,7 @@ if [ "${1:-}" = "rm" ]; then
 fi
 
 N="${1:-20}"; mkdir -p "$OUT"
-ids=$(s3 ls --recursive "s3://$BUCKET/bugs/" | awk '{print $4}' | grep '/report.json$' | sed 's#^bugs/##; s#/report.json$##' | sort -r | head -n "$N")
+ids=$( { s3 ls --recursive "s3://$BUCKET/bugs/" || true; } | awk '{print $4}' | { grep '/report.json$' || true; } | sed 's#^bugs/##; s#/report.json$##' | sort -r | head -n "$N")
 [ -n "$ids" ] || { echo "no bug reports yet"; exit 0; }
 for id in $ids; do
   [ -f "$OUT/$id/report.json" ] || s3 cp --recursive --quiet "s3://$BUCKET/bugs/$id/" "$OUT/$id/"
