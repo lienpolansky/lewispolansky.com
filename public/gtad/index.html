@@ -253,8 +253,11 @@ var ICON = { mac: '<svg viewBox="0 0 384 512"><path d="M319 269c0-37 16-64 50-85
 var PLAT = { 'mac-arm': ['Mac', 'Apple silicon'], 'windows': ['Windows', '64-bit'] }, ALIAS = { 'mac-arm64': 'mac-arm', 'win-x64': 'windows' };
 var STEPS = {
   mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications, then <b>right-click it and choose Open</b>. Choose Open again when your Mac asks.', 'If your Mac still says it cannot be opened, go to <b>System Settings &gt; Privacy and Security</b>, scroll down and click <b>Open Anyway</b>.'],
-  windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>SF Bayside.exe</b> (the program\'s name in this build).', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
+  windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>{exe}</b>.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
 };
+// The Windows program was "SF Bayside.exe" up to 0.10.x; from 0.11.0 it carries the game's name.
+var EXE = 'Grand Towing and Delivery.exe';
+function exeFor(v) { return /^0\.(\d|10)\./.test(v || '') ? 'SF Bayside.exe' : 'Grand Towing and Delivery.exe'; }
 var size = function (b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; };
 function tidy(d) { var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '' }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
 function where() {
@@ -266,7 +269,7 @@ function reveal(sel, on) { document.querySelectorAll(sel).forEach(function (e) {
 function draw(D, locked) {
   var get = document.getElementById('get'), mine = where(); get.innerHTML = '';
   get.hidden = locked; document.getElementById('ask').hidden = !locked; document.getElementById('phone').hidden = locked || mine !== 'phone';
-  var first = mine === 'windows' ? 'windows' : 'mac-arm';
+  var first = mine === 'windows' ? 'windows' : 'mac-arm'; if (D.builds.windows && D.builds.windows.version) EXE = exeFor(D.builds.windows.version);
   tab(first === 'windows' ? 'windows' : 'mac');
   if (locked) return;
   [first, first === 'windows' ? 'mac-arm' : 'windows'].forEach(function (id, k) {
@@ -277,7 +280,7 @@ function draw(D, locked) {
     if (k === 0 && ok && mine !== 'phone') { var h = document.createElement('div'); h.className = 'here'; h.textContent = 'Picked for this computer'; get.appendChild(h); }
     get.appendChild(a);
     // a new, unsigned game trips SmartScreen and some antivirus: three short lines on the way past
-    if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>SF Bayside.exe</b> in this build. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find SF Bayside or Grand Towing, <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
+    if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>' + EXE + '</b>. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find ' + EXE.replace('.exe', '') + ', <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
     // Gatekeeper blocks a game that is not notarised ("Apple could not verify..."): the way past it, short.
     if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>If your Mac says it could not verify the app:</b><ol><li>Unzip it and drag it to Applications.</li><li>Right-click the app, choose <b>Open</b>, then <b>Open</b> again.</li><li>Still stuck? <b>System Settings &gt; Privacy &amp; Security &gt; Open Anyway</b>.</li></ol>Or in Terminal:<code>xattr -dr com.apple.quarantine "/Applications/Grand Towing and Delivery.app"</code>'; get.appendChild(m); }
   });
@@ -291,7 +294,7 @@ function draw(D, locked) {
 function tab(which) {
   var t = document.getElementById('tabs'); t.innerHTML = '';
   [['mac', 'Mac'], ['windows', 'Windows']].forEach(function (p) { var e = document.createElement('button'); e.setAttribute('role', 'tab'); e.setAttribute('aria-selected', p[0] === which); e.textContent = p[1]; e.onclick = function () { tab(p[0]); }; t.appendChild(e); });
-  document.getElementById('steps').innerHTML = STEPS[which].map(function (s) { return '<li>' + s + '</li>'; }).join('');
+  document.getElementById('steps').innerHTML = STEPS[which].map(function (s) { return '<li>' + s.replace('{exe}', EXE) + '</li>'; }).join('');
 }
 function why(t) { document.getElementById('askwhy').textContent = t || ''; }
 // If the server did not take the code from the link itself, hand it over once and take it out of the address.
