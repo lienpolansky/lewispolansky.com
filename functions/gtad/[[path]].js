@@ -184,7 +184,7 @@ async function log(request, env, url) {
   if (Number(request.headers.get("Content-Length") || 0) > MOST_LOG) return bugJson({ ok: false, error: "too big", most: MOST_LOG }, 413);
   const h = k => request.headers.get(k);
   const session = url.searchParams.get("session") || h("X-Gtad-Session") || "", n = url.searchParams.get("n") || h("X-Gtad-Part") || "";
-  const who = String(url.searchParams.get("player") || h("X-Gtad-Player") || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
+  const who = String(url.searchParams.get("player") || h("X-Gtad-Player") || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "anon";      // room for a whole ledger id
   if (!/^[A-Za-z0-9-]{8,64}$/.test(session)) return bugJson({ ok: false, error: "bad request", why: "session" }, 400);
   if (!/^\d{1,6}$/.test(n)) return bugJson({ ok: false, error: "bad request", why: "n" }, 400);
   if (env.LEDGER) {
