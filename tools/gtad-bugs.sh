@@ -13,7 +13,12 @@ OUT="$HOME/Downloads/gtad-bugs"; s3() { aws s3 --endpoint-url "$EP" "$@"; }
 
 if [ "${1:-}" = "rm" ]; then
   id="${2:?which report? give its id}"; case "$id" in */*-*) ;; *) echo "not a report id: $id" >&2; exit 1;; esac
-  s3 rm --recursive "s3://$BUCKET/bugs/$id/" >/dev/null && rm -rf "$OUT/$id" && echo "deleted $id"; exit 0
+  cid=$( { s3 cp --quiet "s3://$BUCKET/bugs/$id/report.json" - 2>/dev/null || true; } | /usr/bin/python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("id") or "")
+except Exception: print("")')
+  s3 rm --recursive "s3://$BUCKET/bugs/$id/" >/dev/null && rm -rf "$OUT/$id"
+  [ -n "$cid" ] && s3 rm "s3://$BUCKET/bugs/_ids/$cid" >/dev/null 2>&1 || true
+  echo "deleted $id"; exit 0
 fi
 
 N="${1:-20}"; mkdir -p "$OUT"

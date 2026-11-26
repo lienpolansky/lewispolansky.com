@@ -157,12 +157,16 @@ async function bug(request, env) {
   if (!report || typeof report !== "object" || Array.isArray(report)) return bugJson({ ok: false, error: "bad request", why: "report" }, 400);
   if (shot && shot.length > MOST_SHOT) return bugJson({ ok: false, error: "too big", why: "shot" }, 413);
   if (shot && !(shot[0] === 0xff && shot[1] === 0xd8 && shot[2] === 0xff)) return bugJson({ ok: false, error: "bad request", why: "shot is not a JPEG" }, 400);
+  // the client's own id for the report makes a resend land once: the second time gets the first answer back
+  const cid = typeof report.id === "string" && /^[A-Za-z0-9-]{8,64}$/.test(report.id) ? report.id : null, mark = cid ? `bugs/_ids/${cid}` : null;
+  if (mark) { const was = await env.BUCKET.get(mark); if (was) return bugJson({ ok: true, id: await was.text(), repeat: true }, 200); }
   const at = new Date(), day = at.toISOString().slice(0, 10), time = at.toISOString().slice(11, 19).replace(/:/g, "");
   const who = String(report.player || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
   const id = `${day}/${time}-${who}-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, "0")).join("")}`;
   const stored = { ...report, _received: { at: at.toISOString(), country: (request.cf && request.cf.country) || null, agent: (request.headers.get("User-Agent") || "").slice(0, 200), shot: !!shot } };
   await env.BUCKET.put(`bugs/${id}/report.json`, JSON.stringify(stored, null, 1), { httpMetadata: { contentType: "application/json" } });
   if (shot) await env.BUCKET.put(`bugs/${id}/shot.jpg`, shot, { httpMetadata: { contentType: "image/jpeg" } });
+  if (mark) await env.BUCKET.put(mark, id, { httpMetadata: { contentType: "text/plain" } });
   return bugJson({ ok: true, id }, 201);
 }
 
