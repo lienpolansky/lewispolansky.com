@@ -150,3 +150,100 @@ test("version-proof: answers carry api and schema, unknown fields are ignored, u
   const cols = t.env.LEDGER.raw.prepare("SELECT name FROM pragma_table_info('owners')").all().map(c => c.name);
   for (const bad of ["x", "y", "z", "pos", "rot", "yaw", "speed"]) assert.ok(!cols.includes(bad), "no positions or physics in the ledger");
 });
+
+// ---------- hardening ----------
+test("out of order: a batch that needs an earlier one fails cleanly, then goes through once the earlier one lands", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  const b = await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }]);
+  assert.equal(b.status, 409); assert.equal(b.why, "short");
+  assert.equal((await t.commit(host, "ooo-first1", [{ op: "pay", to: leo.account, amount: 500 }])).status, 201);
+  assert.equal((await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }])).status, 201);   // a refused id was never stored, so it can be sent again
+  assert.equal((await t.me(leo)).cash, 200);
+});
+
+test("replays: an old batch sent again after later ones changes nothing", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  const first = await t.commit(host, "replay-01", [{ op: "pay", to: leo.account, amount: 100 }]);
+  await t.commit(host, "replay-02", [{ op: "spend", from: leo.account, amount: 100 }]);
+  for (let i = 0; i < 3; i++) { const r = await t.commit(host, "replay-01", [{ op: "pay", to: leo.account, amount: 100 }]); assert.equal(r.status, 200); assert.equal(r.first, first.first); }
+  assert.equal((await t.me(leo)).cash, 0);
+});
+
+test("the same batch id with different ops is refused, and the first ops stand", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  await t.commit(host, "dup-key-01", [{ op: "pay", to: leo.account, amount: 100 }]);
+  const r = await t.commit(host, "dup-key-01", [{ op: "pay", to: leo.account, amount: 999999 }]);
+  assert.equal(r.status, 409); assert.equal(r.error, "batch id reused"); assert.equal((await t.me(leo)).cash, 100);
+  const s = await t.commit(host, "dup-key-01", [{ op: "pay", to: leo.account, amount: 100, why: null }]);   // the same ops, an empty field: still the same batch
+  assert.equal(s.status, 200);
+});
+
+test("amounts: negative, fractional, huge and overflowing are refused; nothing moves", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  for (const amount of [-1, 1.5, 1e13, Number.MAX_SAFE_INTEGER + 2, "100", null, NaN, Infinity]) {
+    const r = await t.commit(host, "amt-" + String(Math.abs(Number(amount)) || 0).replace(/[^0-9]/g, "").slice(0, 10) + "x" + typeof amount, [{ op: "pay", to: leo.account, amount }]);
+    assert.equal(r.status, 400, "amount " + amount);
+  }
+  for (let i = 0; i < 1000; i++) await t.env.LEDGER.prepare("UPDATE accounts SET cash = cash + 1000000000000 WHERE id = ?").bind(leo.account).run();
+  const r = await t.commit(host, "amt-overflow", [{ op: "pay", to: leo.account, amount: 1e12 }]);
+  assert.equal(r.status, 409); assert.equal(r.why, "too much"); assert.equal((await t.me(leo)).cash, 1e15);
+});
+
+test("unknown ids: places, kerb cars and unlocks from later versions are kept as they are", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  await t.commit(host, "unk-0001", [{ op: "pay", to: leo.account, amount: 100 }]);
+  const r = await t.commit(host, "unk-0002", [{ op: "buy", who: leo.account, thing: "b999_new_place", price: 10 }, { op: "buy", who: leo.account, thing: "SorrelGT@-12,40", price: 10 }, { op: "unlock", who: leo.account, unlock: "jetpack_v3", price: 10 }]);
+  assert.equal(r.status, 201); const m = await t.me(leo); assert.deepEqual(m.things.map(x => x.thing), ["SorrelGT@-12,40", "b999_new_place"]); assert.deepEqual(m.unlocks, ["jetpack_v3"]);
+  assert.equal((await t.commit(host, "unk-0003", [{ op: "buy", who: leo.account, thing: "../../etc", price: 1 }])).status, 400);
+  assert.equal((await t.commit(host, "unk-0004", [{ op: "buy", who: leo.account, thing: "x".repeat(65), price: 1 }])).status, 400);
+});
+
+test("oversized: a big body is refused before it is read, and too many ops are refused", async () => {
+  const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
+  const big = await t.call("POST", "/ledger/v1/commit", { batch: "big-00001", ops: [{ op: "pay", to: leo.account, amount: 1, why: "x".repeat(70000) }] }, host);
+  assert.equal(big.status, 413);
+  const ops = Array.from({ length: 65 }, () => ({ op: "pay", to: leo.account, amount: 1 }));
+  assert.equal((await t.commit(host, "many-0001", ops)).status, 400);
+  assert.equal((await t.commit(host, "many-0002", ops.slice(0, 64))).status, 201); assert.equal((await t.me(leo)).cash, 64);
+});
+
+test("rate limits: one account's flood is slowed, others carry on; new accounts per address are capped", async () => {
+  const t = town(); const leo = await t.join("Leo"), sam = await t.join("Sam");
+  let slowed = null; for (let i = 0; i < 605 && !slowed; i++) { const r = await t.me(leo); if (r.status === 429) slowed = r; }
+  assert.ok(slowed, "a flood is slowed"); assert.ok(slowed.retry_ms > 0);
+  assert.equal((await t.me(sam)).status, 200);
+  let refused = 0; for (let i = 0; i < 32; i++) { const r = await t.call("POST", "/ledger/v1/accounts", { name: "Bot" + i }, null, { headers: { "X-Gtad-Token": await gameToken(PASS), "CF-Connecting-IP": "203.0.113.9" } }); if (r.status === 429) refused++; }
+  assert.equal(refused, 2);
+});
+
+test("clock skew: a request 6 minutes off is told the server's time; within 5 minutes it works", async () => {
+  const t = town(); const leo = await t.join("Leo");
+  const off = await t.call("GET", "/ledger/v1/me", null, leo, { time: 1_800_000_000_000 - 6 * 60_000 });
+  assert.equal(off.status, 401); assert.equal(off.error, "clock"); assert.ok(off.now > 1_800_000_000_000);
+  assert.equal((await t.call("GET", "/ledger/v1/me", null, leo, { time: 1_800_000_000_000 + 4 * 60_000 })).status, 200);
+});
+
+test("concurrent trades over the same house: one completes, the other leaves everyone as they were", async () => {
+  const t = town(); const hA = await t.join("Host A"), hB = await t.join("Host B"), leo = await t.join("Leo"), sam = await t.join("Sam"), dana = await t.join("Dana");
+  await t.commit(hA, "seed-0001", [{ op: "pay", to: sam.account, amount: 9000 }, { op: "pay", to: dana.account, amount: 9000 }, { op: "buy", who: leo.account, thing: "h089", price: 0 }]);
+  const [a, b] = await Promise.all([
+    t.commit(hA, "trade-aaaa", [{ op: "transfer", thing: "h089", from: leo.account, to: sam.account }, { op: "give", from: sam.account, to: leo.account, amount: 8000 }]),
+    t.commit(hB, "trade-bbbb", [{ op: "transfer", thing: "h089", from: leo.account, to: dana.account }, { op: "give", from: dana.account, to: leo.account, amount: 7000 }])]);
+  assert.deepEqual([a.status, b.status].sort(), [201, 409]);
+  const w = await t.call("GET", "/ledger/v1/world", null, leo), cash = id => w.accounts.find(x => x.id === id).cash, owner = w.owners.find(o => o.thing === "h089").account;
+  if (owner === sam.account) { assert.equal(cash(leo.account), 8000); assert.equal(cash(sam.account), 1000); assert.equal(cash(dana.account), 9000); }
+  else { assert.equal(owner, dana.account); assert.equal(cash(leo.account), 7000); assert.equal(cash(dana.account), 2000); assert.equal(cash(sam.account), 9000); }
+});
+
+test("import twice at once: only one lands", async () => {
+  const t = town(); const leo = await t.join("Leo");
+  const [a, b] = await Promise.all([t.call("POST", "/ledger/v1/import", { cash: 500, things: [], unlocks: [] }, leo), t.call("POST", "/ledger/v1/import", { cash: 500, things: [], unlocks: [] }, leo)]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]); assert.equal((await t.me(leo)).cash, 500);
+});
+
+test("versions: /ledger/ lists them, an unknown one says so, v1 keeps answering", async () => {
+  const t = town();
+  const l = await t.call("GET", "/ledger/"); assert.equal(l.status, 200); assert.deepEqual(l.versions, ["v1"]);
+  const old = await t.call("GET", "/ledger/v0/health"); assert.equal(old.status, 404); assert.equal(old.error, "unknown version"); assert.deepEqual(old.versions, ["v1"]);
+  assert.equal((await t.call("GET", "/ledger/v1/health")).ok, true);
+});

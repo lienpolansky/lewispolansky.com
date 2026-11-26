@@ -43,7 +43,18 @@ next to the account id. Never log or show it. Every request except `accounts` an
 | `X-Ledger-Sig` | lowercase hex of HMAC-SHA256(secret, `METHOD + "\n" + path_and_query + "\n" + time + "\n" + hex(SHA-256(body)))`) |
 
 `path_and_query` is exactly what is sent, for example `/ledger/v1/feed?after=10&limit=100`. The body is the exact UTF-8 bytes
-sent, or the empty string for a GET. A request that fails the check is answered `401 {"ok":false,"error":"unsigned"}`.
+sent, or the empty string for a GET. A request that fails the check is answered `401 {"ok":false,"error":"unsigned"}`. A request
+whose time is more than 5 minutes off gets `401 {"ok":false,"error":"clock","now":<server ms>}`: correct the clock by that and
+send it again.
+
+## Limits
+
+- Bodies are at most 64 KB; a bigger one gets `413` before it is read.
+- A commit holds at most 64 ops, each amount is a whole number from 0 to 10^12, and an account's cash is at most 10^15.
+- Each account may make 600 signed requests a minute. Each address may make 30 new accounts an hour. Over the limit, the
+  answer is `429 {"ok":false,"error":"slow down","retry_ms"}`.
+- `GET /ledger/` lists the versions served (`{"versions":["v1"]}`). Another version prefix gets `404 "unknown version"` with
+  that list.
 
 ## Endpoints
 
@@ -94,11 +105,13 @@ land together or not at all.
 - **All or nothing.** The whole batch is one D1 transaction. If any condition fails (short of cash, already owned, not the
   owner, wrong level, unknown account), nothing in the batch happens.
 - **Once.** The pair (host account, `batch`) is applied once only. Sending the same batch again, for example after a timeout,
-  gets `200 {"ok":true,"repeat":true,"first","entries","seq"}` and changes nothing. A new batch that is applied gets
+  gets `200 {"ok":true,"repeat":true,"first","entries","seq"}` and changes nothing. The same batch id with different ops is
+  refused with `409 "batch id reused"`: every new set of ops needs a new id. A batch that was refused (409) was never stored,
+  so its id may be sent again once whatever it needed has happened. A new batch that is applied gets
   `201 {"ok":true,"repeat":false,"first":<its first seq>,"entries":<lines written>,"seq"}`.
 - **Conflict.** `409 {"ok":false,"error":"conflict","op":<index>,"why":…}`. `why` is one of `owned` (with `thing` and `owner`),
   `short` (with `account`, `need` and `has`), `not the owner`, `wrong level` (with `level`), `has it`, `not theirs`,
-  `no account` (with `account`), or `changed meanwhile` (the town moved while the batch was checked: rebuild it from `world` and
+  `no account` (with `account`), `too much` (cash would pass 10^15), or `changed meanwhile` (the town moved while the batch was checked: rebuild it from `world` and
   send it again under a new batch id).
 - **Bad shape.** `400 {"ok":false,"error":"bad request","op","why":<the field>}`.
 
