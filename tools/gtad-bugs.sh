@@ -3,6 +3,9 @@
 #   tools/gtad-bugs.sh          download the 20 newest reports into ~/Downloads/gtad-bugs/ and list them
 #   tools/gtad-bugs.sh 50       the 50 newest
 #   tools/gtad-bugs.sh rm <id>  delete one report (id as listed, e.g. 2026-11-26/053012-leo-a1b2c3)
+#   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload)
+#   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log
+#   tools/gtad-bugs.sh logs rm <player-session>  delete that session's chunks
 # Keys come from ~/.config/gtad/r2.env (GTAD_R2_ACCESS_KEY_ID, GTAD_R2_SECRET_ACCESS_KEY) and are never printed. Needs the aws CLI.
 set -euo pipefail
 ENV="$HOME/.config/gtad/r2.env"; [ -r "$ENV" ] || { echo "missing $ENV" >&2; exit 1; }
@@ -19,6 +22,33 @@ except Exception: print("")')
   s3 rm --recursive "s3://$BUCKET/bugs/$id/" >/dev/null && rm -rf "$OUT/$id"
   [ -n "$cid" ] && s3 rm "s3://$BUCKET/bugs/_ids/$cid" >/dev/null 2>&1 || true
   echo "deleted $id"; exit 0
+fi
+
+if [ "${1:-}" = "logs" ]; then
+  all=$( { s3 ls --recursive "s3://$BUCKET/logs/" || true; } | awk '{print $1" "$2" "$4}')
+  if [ "${2:-}" = "rm" ]; then
+    sess="${3:?which session?}"; keys=$(echo "$all" | awk '{print $3}' | { grep "/$sess/" || true; })
+    [ -n "$keys" ] || { echo "no session $sess"; exit 1; }
+    for k in $keys; do s3 rm "s3://$BUCKET/$k" >/dev/null; done; echo "deleted $(echo "$keys" | wc -l | tr -d ' ') chunks of $sess"; exit 0
+  fi
+  if [ -z "${2:-}" ]; then
+    [ -n "$all" ] || { echo "no game logs yet"; exit 0; }
+    echo "$all" | /usr/bin/python3 -c '
+import sys, collections
+s = collections.OrderedDict()
+for line in sys.stdin:
+    d, t, k = line.split(None, 2); k = k.strip(); sess = k.split("/")[2]
+    c, last = s.get(sess, (0, "")); s[sess] = (c + 1, max(last, d + " " + t))
+for sess, (c, last) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:20]: print("%-48s %4d chunks  last %s" % (sess, c, last))'
+    exit 0
+  fi
+  sess="$2"; keys=$(echo "$all" | awk '{print $3}' | { grep "/$sess/" || true; })
+  [ -n "$keys" ] || { echo "no session $sess"; exit 1; }
+  mkdir -p "$OUT/logs"; tmp=$(mktemp -d "${TMPDIR:-/tmp}/gtad-logs.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
+  for k in $keys; do s3 cp --quiet "s3://$BUCKET/$k" "$tmp/$(echo "$k" | tr / _)"; done
+  # chunks in order: by date folder, then chunk number (a session may cross midnight UTC)
+  ls "$tmp" | sort -t_ -k2,2 -k4,4n | while read f; do gunzip -c "$tmp/$f"; done > "$OUT/logs/$sess.log"
+  echo "$OUT/logs/$sess.log ($(echo "$keys" | wc -l | tr -d ' ') chunks, $(wc -l < "$OUT/logs/$sess.log" | tr -d ' ') lines)"; exit 0
 fi
 
 N="${1:-20}"; mkdir -p "$OUT"

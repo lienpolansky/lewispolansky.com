@@ -25,6 +25,7 @@ export async function onRequest({ request, env, next }) {
   let key = path.slice(PREFIX.length + 1); if (key === "" || key.endsWith("/")) key += "index.html";
   if (key === "index.html" && url.searchParams.has("k") && (request.method === "GET" || request.method === "HEAD")) return linkCode(request, env, url);
   if (key === "unlock") return request.method === "POST" ? unlock(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  if (key === "log") return request.method === "POST" ? log(request, env, url) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   if (key === "bug") return request.method === "POST" ? bug(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   if (key === "stats") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
@@ -32,7 +33,7 @@ export async function onRequest({ request, env, next }) {
     return stats(request, env);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
-  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/") || key.startsWith("bugs/")) return new Response("Not found", { status: 404 });
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/") || key.startsWith("bugs/") || key.startsWith("logs/")) return new Response("Not found", { status: 404 });
   if (LOCKED(key) && !(await allowed(request, env))) return new Response("Ask Lewis for the link", { status: 401, headers: { "Cache-Control": "no-store" } });
   if (FROM_BUCKET(key) && env.BUCKET) { const r = await serve(request, env, key); if (r) return r; }
   if (key.startsWith("builds/") || key.startsWith("manifest")) return new Response("Not found", { status: 404 });
@@ -168,6 +169,36 @@ async function bug(request, env) {
   if (shot) await env.BUCKET.put(`bugs/${id}/shot.jpg`, shot, { httpMetadata: { contentType: "image/jpeg" } });
   if (mark) await env.BUCKET.put(mark, id, { httpMetadata: { contentType: "text/plain" } });
   return bugJson({ ok: true, id }, 201);
+}
+
+// ---------- game logs, sent a chunk at a time ----------
+// POST /gtad/log?player=<name>&session=<id>&n=<chunk> with X-Gtad-Token and one gzip chunk (at most 512 KB) as the body.
+// The same can come as ?t=<token> with headers X-Gtad-Player, X-Gtad-Session and X-Gtad-Part (net-2's sender).
+// Stored at logs/<UTC date>/<player>-<session>/<n>.log.gz; the same chunk sent again overwrites itself. Never served back.
+// 2000 chunks an hour from one address: room for a house full of players each sending every minute.
+const MOST_LOG = 512 * 1024, LOGS_AN_HOUR = 2000;
+async function log(request, env, url) {
+  if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "not taking logs yet" }, 503);
+  const token = request.headers.get("X-Gtad-Token") || url.searchParams.get("t") || "";
+  if (!same(token, await updaterToken(env.PASSCODE))) return bugJson({ ok: false, error: "ask Lewis for the link" }, 401);
+  if (Number(request.headers.get("Content-Length") || 0) > MOST_LOG) return bugJson({ ok: false, error: "too big", most: MOST_LOG }, 413);
+  const h = k => request.headers.get(k);
+  const session = url.searchParams.get("session") || h("X-Gtad-Session") || "", n = url.searchParams.get("n") || h("X-Gtad-Part") || "";
+  const who = String(url.searchParams.get("player") || h("X-Gtad-Player") || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "anon";      // room for a whole ledger id
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(session)) return bugJson({ ok: false, error: "bad request", why: "session" }, 400);
+  if (!/^\d{1,6}$/.test(n)) return bugJson({ ok: false, error: "bad request", why: "n" }, 400);
+  if (env.LEDGER) {
+    const now = Date.now(), w = Math.floor(now / 3_600_000), ip = request.headers.get("CF-Connecting-IP") || "local", k = "l:" + (await hmac("game logs", ip)).slice(0, 24);
+    const r = await env.LEDGER.prepare("INSERT INTO hits (key, window, n) VALUES (?, ?, 1) ON CONFLICT (key, window) DO UPDATE SET n = n + 1 RETURNING n").bind(k, w).first();
+    if (r && r.n === 1) await env.LEDGER.prepare("DELETE FROM hits WHERE key = ? AND window < ?").bind(k, w).run();
+    if (r && r.n > LOGS_AN_HOUR) return bugJson({ ok: false, error: "slow down", retry_ms: (w + 1) * 3_600_000 - now }, 429);
+  }
+  const body = new Uint8Array(await request.arrayBuffer());
+  if (body.length > MOST_LOG) return bugJson({ ok: false, error: "too big", most: MOST_LOG }, 413);
+  if (body.length < 18 || body[0] !== 0x1f || body[1] !== 0x8b) return bugJson({ ok: false, error: "bad request", why: "not gzip" }, 400);
+  const k = `logs/${new Date().toISOString().slice(0, 10)}/${who}-${session}/${n.padStart(6, "0")}.log.gz`;
+  await env.BUCKET.put(k, body, { httpMetadata: { contentType: "application/gzip" } });
+  return bugJson({ ok: true, key: k.slice(5) }, 201);
 }
 
 async function stats(request, env) {
