@@ -152,13 +152,16 @@ test("version-proof: answers carry api and schema, unknown fields are ignored, u
 });
 
 // ---------- hardening ----------
-test("out of order: a batch that needs an earlier one fails cleanly, then goes through once the earlier one lands", async () => {
+test("out of order: a refused batch keeps its refusal on repeat; the same ops under a new id go through once the earlier one lands", async () => {
   const t = town(); const host = await t.join("Host"), leo = await t.join("Leo");
   const b = await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }]);
   assert.equal(b.status, 409); assert.equal(b.why, "short");
   assert.equal((await t.commit(host, "ooo-first1", [{ op: "pay", to: leo.account, amount: 500 }])).status, 201);
-  assert.equal((await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }])).status, 201);   // a refused id was never stored, so it can be sent again
+  const again = await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }]);   // a refused id keeps its refusal
+  assert.equal(again.status, 409); assert.equal(again.why, "short"); assert.equal(again.repeat, true); assert.equal((await t.me(leo)).cash, 500);
+  assert.equal((await t.commit(host, "ooo-second-b", [{ op: "spend", from: leo.account, amount: 300, why: "lunch" }])).status, 201);   // a new id goes through
   assert.equal((await t.me(leo)).cash, 200);
+  assert.equal((await t.commit(host, "ooo-second", [{ op: "spend", from: leo.account, amount: 1 }])).error, "batch id reused");
 });
 
 test("replays: an old batch sent again after later ones changes nothing", async () => {

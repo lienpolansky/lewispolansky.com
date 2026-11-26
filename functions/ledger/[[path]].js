@@ -186,14 +186,19 @@ async function commit(db, host, b, now) {
   try { await db.batch(list); }
   catch (e) {
     const again = await answer(db, id, false, digest); if (again) return again;      // the same batch landed meanwhile from a retry
-    return json({ ok: false, error: "conflict", ...(await why(db, b.ops)) }, 409);
+    // Remember the refusal, so the same batch sent again gets the same answer and never lands later by surprise.
+    const refusal = { error: "conflict", ...(await why(db, b.ops)) };
+    await db.prepare("INSERT OR IGNORE INTO batches (id, host, at, first_seq, entries, digest, failed, refusal) VALUES (?, ?, ?, NULL, 0, ?, 1, ?)").bind(id, host.id, now, digest, JSON.stringify(refusal)).run();
+    const settled = await answer(db, id, false, digest); if (settled) return settled;
+    return json({ ok: false, ...refusal }, 409);
   }
   return answer(db, id, true, digest);
 }
 // A batch already in the books: the same ops get the first answer again; other ops under the same id are refused.
 async function answer(db, id, fresh, digest) {
-  const r = await db.prepare("SELECT first_seq, entries, digest FROM batches WHERE id = ?").bind(id).first(); if (!r) return null;
+  const r = await db.prepare("SELECT first_seq, entries, digest, failed, refusal FROM batches WHERE id = ?").bind(id).first(); if (!r) return null;
   if (r.digest !== digest) return json({ ok: false, error: "batch id reused", why: "this batch id was already used for other ops; use a new id" }, 409);
+  if (r.failed) return json({ ok: false, repeat: !fresh, ...JSON.parse(r.refusal) }, 409);
   return json({ ok: true, repeat: !fresh, first: r.first_seq, entries: r.entries, seq: await lastSeq(db) }, fresh ? 201 : 200);
 }
 // Why a batch failed: walk its ops against the books as they are now, keeping track of what the earlier ops would have done.

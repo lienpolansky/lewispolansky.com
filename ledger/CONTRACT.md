@@ -106,8 +106,9 @@ land together or not at all.
   owner, wrong level, unknown account), nothing in the batch happens.
 - **Once.** The pair (host account, `batch`) is applied once only. Sending the same batch again, for example after a timeout,
   gets `200 {"ok":true,"repeat":true,"first","entries","seq"}` and changes nothing. The same batch id with different ops is
-  refused with `409 "batch id reused"`: every new set of ops needs a new id. A batch that was refused (409) was never stored,
-  so its id may be sent again once whatever it needed has happened. A new batch that is applied gets
+  refused with `409 "batch id reused"`: every new set of ops needs a new id. A refused batch (409 conflict) is remembered too:
+  sending it again gets the same refusal with `"repeat":true`, and it never lands later. To try again after whatever it needed
+  has happened, send it under a new batch id. A new batch that is applied gets
   `201 {"ok":true,"repeat":false,"first":<its first seq>,"entries":<lines written>,"seq"}`.
 - **Conflict.** `409 {"ok":false,"error":"conflict","op":<index>,"why":…}`. `why` is one of `owned` (with `thing` and `owner`),
   `short` (with `account`, `need` and `has`), `not the owner`, `wrong level` (with `level`), `has it`, `not theirs`,
@@ -147,6 +148,8 @@ This works once per account. Body: `{"cash":<n>,"things":[{"thing","level","paid
 `{"ok":true,"ledger":<bound>}`. This one is not signed.
 
 ## Trust
+
+Everyone's cash and holdings are visible to every signed account (`world`, `feed`). That suits a town of friends.
 
 Hosts are the friends' own games, so the ledger trusts a signed host to describe what happened in its town: a job's pay, a
 purchase, a trade both players confirmed. The ledger does not re-run the game's rules (prices, the 20 to 35 percent owner's cut).

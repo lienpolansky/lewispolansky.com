@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS batches (
   first_seq INTEGER,
   entries   INTEGER NOT NULL,
   digest    TEXT,                                -- SHA-256 of the batch's ops: the same id with other ops is refused
+  failed    INTEGER NOT NULL DEFAULT 0,          -- 1: the batch was refused and changed nothing; a repeat gets the same refusal
+  refusal   TEXT,                                -- that refusal, as JSON
   sv        INTEGER NOT NULL DEFAULT 1
 );
 
