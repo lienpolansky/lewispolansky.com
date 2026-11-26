@@ -10,6 +10,9 @@
 // Builds, the manifest and its signature come from the R2 bucket bound as BUCKET, with byte ranges so a broken download carries
 // on. The page and its pictures are this site's own files (public/gtad). POST /gtad/stats keeps one opt-in performance report
 // per file under stats/ in the bucket: no address, no name, never served back.
+//
+// Where the bindings are set: BUCKET (the R2 bucket "gtad") and the secret PASSCODE are in the Pages project's production
+// settings (lewispolansky-static), not in a wrangler file, so nothing else about the site's deploy changes.
 
 const PREFIX = "/gtad", COOKIE = "gtad", COOKIE_DAYS = 400, MOST_REPORT = 8192;
 const LOCKED = k => k.startsWith("builds/") || k === "manifest.json" || k === "manifest.json.sig" || k === "gtad.json";
