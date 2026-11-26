@@ -98,6 +98,7 @@ h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(-
 .dl svg { width: 1.1em; height: 1.1em; fill: currentColor; vertical-align: -.15em; margin-right: 8px; }
 .here { font: 500 11px 'IBM Plex Mono', monospace; color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }
 .phone { margin: 12px 18px 0; padding: 10px 12px; border-left: 3px solid var(--gold); background: var(--panel2); font-size: 14px; }
+.zip { font-size: 12.5px; color: var(--gold); margin: -2px 0 4px; align-self: flex-start; }
 .winnote { font-size: 12.5px; color: var(--mut); margin: -2px 0 2px; line-height: 1.5; }
 .winnote b { color: var(--ink); font-weight: 600; }
 .ask { padding: 18px; margin: 16px 18px 18px; border-left: 3px solid var(--gold); background: var(--panel2); font-size: 17px; }
@@ -251,6 +252,10 @@ function show(i) {
 // "Ask Lewis for the link", with no download addresses. Sizes and the version come only from gtad.json.
 var ICON = { mac: '<svg viewBox="0 0 384 512"><path d="M319 269c0-37 16-64 50-85-19-27-47-42-85-45-35-3-74 21-88 21-15 0-49-20-76-20C64 141 5 185 5 274c0 26 5 53 14 81 13 37 59 127 107 125 25-1 43-18 76-18 32 0 48 18 76 18 49-1 90-83 103-119-66-31-62-90-62-92zM262 105c28-33 25-63 24-74-24 1-52 16-68 35-18 20-28 45-26 73 26 2 50-11 70-34z"/></svg>', windows: '<svg viewBox="0 0 448 512"><path d="M0 93l183-25v177H0V93zm0 326l183 25V269H0v150zm203 28l245 33V269H203v178zm0-382v180h245V32L203 65z"/></svg>' };
 var PLAT = { 'mac-arm': ['Mac', 'Apple silicon'], 'windows': ['Windows', '64-bit'] }, ALIAS = { 'mac-arm64': 'mac-arm', 'win-x64': 'windows' };
+var SETUP_STEPS = {
+  mac: ['Open <b>{setup}</b> from your downloads.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Right-click the app in Applications, choose <b>Open</b>, then <b>Open</b> again.'],
+  windows: ['Open <b>{setup}</b> from your downloads.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.', 'Setup downloads the game ({size}) and gets it ready to play.']
+}, SETUP = {};
 var STEPS = {
   mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications, then <b>right-click it and choose Open</b>. Choose Open again when your Mac asks.', 'If your Mac still says it cannot be opened, go to <b>System Settings &gt; Privacy and Security</b>, scroll down and click <b>Open Anyway</b>.'],
   windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>{exe}</b>.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
@@ -259,7 +264,7 @@ var STEPS = {
 var EXE = 'Grand Towing and Delivery.exe';
 function exeFor(v) { return /^0\.(\d|10)\./.test(v || '') ? 'SF Bayside.exe' : 'Grand Towing and Delivery.exe'; }
 var size = function (b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; };
-function tidy(d) { var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '' }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
+function tidy(d) { var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; var ins = x.installer && x.installer.url ? { url: x.installer.url, bytes: x.installer.size || 0, name: x.installer.name || '' } : null; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
 function where() {
   var ua = navigator.userAgent || '', p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
   if (/iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/.test(p) && navigator.maxTouchPoints > 1)) return 'phone';
@@ -270,19 +275,22 @@ function draw(D, locked) {
   var get = document.getElementById('get'), mine = where(); get.innerHTML = '';
   get.hidden = locked; document.getElementById('ask').hidden = !locked; document.getElementById('phone').hidden = locked || mine !== 'phone';
   var first = mine === 'windows' ? 'windows' : 'mac-arm'; if (D.builds.windows && D.builds.windows.version) EXE = exeFor(D.builds.windows.version);
+  SETUP = {}; ['windows', 'mac-arm'].forEach(function (k) { var x = D.builds[k]; if (!locked && x && x.url && x.installer) SETUP[k === 'windows' ? 'windows' : 'mac'] = { name: x.installer.name, size: size(Math.max(x.bytes, x.installer.bytes)) }; });
   tab(first === 'windows' ? 'windows' : 'mac');
   if (locked) return;
   [first, first === 'windows' ? 'mac-arm' : 'windows'].forEach(function (id, k) {
     var b = D.builds[id], ok = !!(b && b.url), a = document.createElement(ok ? 'a' : 'div'), p = PLAT[id];
     a.className = 'dl' + (!ok ? ' off' : k === 0 && mine !== 'phone' ? '' : ' alt');
-    if (ok) { a.href = b.url; a.setAttribute('download', ''); }
-    a.innerHTML = '<span>' + ICON[id === 'windows' ? 'windows' : 'mac'] + (ok ? 'Download for ' + p[0] : p[0] + ': coming soon') + '<span class="sub">' + p[1] + (ok && b.version ? ', ' + b.version : '') + (ok && b.bytes ? ', ' + size(b.bytes) : '') + '</span></span>';
+    var ins = ok && b.installer, game = ok ? Math.max(b.bytes || 0, ins ? ins.bytes : 0) : 0;      // a small Setup fetches the game: show the game's size
+    if (ok) { a.href = ins ? ins.url : b.url; a.setAttribute('download', ins && ins.name ? ins.name : ''); }
+    a.innerHTML = '<span>' + ICON[id === 'windows' ? 'windows' : 'mac'] + (ok ? 'Download for ' + p[0] : p[0] + ': coming soon') + '<span class="sub">' + p[1] + (ok && b.version ? ', ' + b.version : '') + (game ? ', ' + size(game) : '') + '</span></span>';
     if (k === 0 && ok && mine !== 'phone') { var h = document.createElement('div'); h.className = 'here'; h.textContent = 'Picked for this computer'; get.appendChild(h); }
     get.appendChild(a);
+    if (ins) { var z = document.createElement('a'); z.className = 'zip'; z.href = b.url; z.setAttribute('download', ''); z.textContent = 'or the zip' + (b.bytes ? ' (' + size(b.bytes) + ')' : ''); get.appendChild(z); }
     // a new, unsigned game trips SmartScreen and some antivirus: three short lines on the way past
     if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>' + EXE + '</b>. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find ' + EXE.replace('.exe', '') + ', <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
     // Gatekeeper blocks a game that is not notarised ("Apple could not verify..."): the way past it, short.
-    if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>If your Mac says it could not verify the app:</b><ol><li>Unzip it and drag it to Applications.</li><li>Right-click the app, choose <b>Open</b>, then <b>Open</b> again.</li><li>Still stuck? <b>System Settings &gt; Privacy &amp; Security &gt; Open Anyway</b>.</li></ol>Or in Terminal:<code>xattr -dr com.apple.quarantine "/Applications/Grand Towing and Delivery.app"</code>'; get.appendChild(m); }
+    if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>If your Mac says it could not verify the app:</b><ol><li>' + (ins ? 'Open the dmg and drag it to Applications.' : 'Unzip it and drag it to Applications.') + '</li><li>Right-click the app, choose <b>Open</b>, then <b>Open</b> again.</li><li>Still stuck? <b>System Settings &gt; Privacy &amp; Security &gt; Open Anyway</b>.</li></ol>Or in Terminal:<code>xattr -dr com.apple.quarantine "/Applications/Grand Towing and Delivery.app"</code>'; get.appendChild(m); }
   });
   // one version when both builds agree, each platform's own when they do not ("0.11.0 Windows, 0.10.0 Mac")
   var vs = ['windows', 'mac-arm'].filter(function (k) { return D.builds[k] && D.builds[k].url && D.builds[k].version; }), one = vs.every(function (k) { return D.builds[k].version === D.builds[vs[0]].version; });
@@ -294,7 +302,8 @@ function draw(D, locked) {
 function tab(which) {
   var t = document.getElementById('tabs'); t.innerHTML = '';
   [['mac', 'Mac'], ['windows', 'Windows']].forEach(function (p) { var e = document.createElement('button'); e.setAttribute('role', 'tab'); e.setAttribute('aria-selected', p[0] === which); e.textContent = p[1]; e.onclick = function () { tab(p[0]); }; t.appendChild(e); });
-  document.getElementById('steps').innerHTML = STEPS[which].map(function (s) { return '<li>' + s.replace('{exe}', EXE) + '</li>'; }).join('');
+  var st = SETUP[which] ? SETUP_STEPS[which] : STEPS[which], su = SETUP[which] || {};
+  document.getElementById('steps').innerHTML = st.map(function (s) { return '<li>' + s.replace('{exe}', EXE).replace('{setup}', su.name || 'the installer').replace('{size}', su.size || 'about 2.6 GB') + '</li>'; }).join('');
 }
 function why(t) { document.getElementById('askwhy').textContent = t || ''; }
 // If the server did not take the code from the link itself, hand it over once and take it out of the address.
