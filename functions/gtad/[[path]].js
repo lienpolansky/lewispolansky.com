@@ -25,13 +25,14 @@ export async function onRequest({ request, env, next }) {
   let key = path.slice(PREFIX.length + 1); if (key === "" || key.endsWith("/")) key += "index.html";
   if (key === "index.html" && url.searchParams.has("k") && (request.method === "GET" || request.method === "HEAD")) return linkCode(request, env, url);
   if (key === "unlock") return request.method === "POST" ? unlock(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  if (key === "bug") return request.method === "POST" ? bug(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   if (key === "stats") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
     if (!(await allowed(request, env))) return new Response("Ask Lewis for the link", { status: 401 });
     return stats(request, env);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
-  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/")) return new Response("Not found", { status: 404 });
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/") || key.startsWith("bugs/")) return new Response("Not found", { status: 404 });
   if (LOCKED(key) && !(await allowed(request, env))) return new Response("Ask Lewis for the link", { status: 401, headers: { "Cache-Control": "no-store" } });
   if (FROM_BUCKET(key) && env.BUCKET) { const r = await serve(request, env, key); if (r) return r; }
   if (key.startsWith("builds/") || key.startsWith("manifest")) return new Response("Not found", { status: 404 });
@@ -118,6 +119,51 @@ async function readCapped(request, most) {
   if (!request.body) return ""; const reader = request.body.getReader(); const parts = []; let n = 0;
   for (;;) { const { done, value } = await reader.read(); if (done) break; n += value.length; if (n > most) { try { await reader.cancel(); } catch {} return null; } parts.push(value); }
   const all = new Uint8Array(n); let at = 0; for (const p of parts) { all.set(p, at); at += p.length; } return new TextDecoder().decode(all);
+}
+
+// ---------- bug reports from the game's F8 reporter ----------
+// POST /gtad/bug with X-Gtad-Token (the game's updater token, the same check as the ledger). Multipart with a "report" field
+// (JSON text, up to 512 KB) and an optional "shot" (JPEG, up to 3 MB), or JSON {"report": {...}, "shot": "<base64 JPEG>"}.
+// Stored in the bucket at bugs/<UTC date>/<HHMMSS>-<player>-<6 hex>/report.json and shot.jpg; never served back from here.
+// At most 30 an hour from one address, counted in the ledger's D1 (the hashed address only).
+const MOST_BUG_REPORT = 512 * 1024, MOST_SHOT = 3 * 1024 * 1024, MOST_BUG_BODY = 5 * 1024 * 1024, BUGS_AN_HOUR = 30;
+const bugJson = (o, status) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+async function bug(request, env) {
+  if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "not taking reports yet" }, 503);
+  if (!same(request.headers.get("X-Gtad-Token") || "", await updaterToken(env.PASSCODE))) return bugJson({ ok: false, error: "ask Lewis for the link" }, 401);
+  if (Number(request.headers.get("Content-Length") || 0) > MOST_BUG_BODY) return bugJson({ ok: false, error: "too big" }, 413);
+  if (env.LEDGER) {
+    const now = Date.now(), w = Math.floor(now / 3_600_000), ip = request.headers.get("CF-Connecting-IP") || "local";
+    const k = "g:" + (await hmac("bug reports", ip)).slice(0, 24);
+    const r = await env.LEDGER.prepare("INSERT INTO hits (key, window, n) VALUES (?, ?, 1) ON CONFLICT (key, window) DO UPDATE SET n = n + 1 RETURNING n").bind(k, w).first();
+    if (r && r.n === 1) await env.LEDGER.prepare("DELETE FROM hits WHERE key = ? AND window < ?").bind(k, w).run();
+    if (r && r.n > BUGS_AN_HOUR) return bugJson({ ok: false, error: "slow down", retry_ms: (w + 1) * 3_600_000 - now }, 429);
+  }
+  let reportText = null, shot = null; const type = (request.headers.get("Content-Type") || "").toLowerCase();
+  try {
+    if (type.startsWith("multipart/form-data")) {
+      const f = await request.formData(); const r = f.get("report"), s = f.get("shot");
+      reportText = typeof r === "string" ? r : r && typeof r.text === "function" ? await r.text() : null;
+      if (s && typeof s.arrayBuffer === "function") shot = new Uint8Array(await s.arrayBuffer());
+    } else {
+      const body = await request.text(); if (body.length > MOST_BUG_BODY) return bugJson({ ok: false, error: "too big" }, 413);
+      const j = JSON.parse(body); reportText = j && j.report !== undefined ? JSON.stringify(j.report) : null;
+      if (j && typeof j.shot === "string" && j.shot.length) shot = Uint8Array.from(atob(j.shot.replace(/^data:image\/jpeg;base64,/, "")), c => c.charCodeAt(0));
+    }
+  } catch (e) { return bugJson({ ok: false, error: "bad request", why: "body" }, 400); }
+  if (reportText === null) return bugJson({ ok: false, error: "bad request", why: "report" }, 400);
+  if (new TextEncoder().encode(reportText).length > MOST_BUG_REPORT) return bugJson({ ok: false, error: "too big", why: "report" }, 413);
+  let report; try { report = JSON.parse(reportText); } catch (e) { return bugJson({ ok: false, error: "bad request", why: "report is not JSON" }, 400); }
+  if (!report || typeof report !== "object" || Array.isArray(report)) return bugJson({ ok: false, error: "bad request", why: "report" }, 400);
+  if (shot && shot.length > MOST_SHOT) return bugJson({ ok: false, error: "too big", why: "shot" }, 413);
+  if (shot && !(shot[0] === 0xff && shot[1] === 0xd8 && shot[2] === 0xff)) return bugJson({ ok: false, error: "bad request", why: "shot is not a JPEG" }, 400);
+  const at = new Date(), day = at.toISOString().slice(0, 10), time = at.toISOString().slice(11, 19).replace(/:/g, "");
+  const who = String(report.player || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
+  const id = `${day}/${time}-${who}-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, "0")).join("")}`;
+  const stored = { ...report, _received: { at: at.toISOString(), country: (request.cf && request.cf.country) || null, agent: (request.headers.get("User-Agent") || "").slice(0, 200), shot: !!shot } };
+  await env.BUCKET.put(`bugs/${id}/report.json`, JSON.stringify(stored, null, 1), { httpMetadata: { contentType: "application/json" } });
+  if (shot) await env.BUCKET.put(`bugs/${id}/shot.jpg`, shot, { httpMetadata: { contentType: "image/jpeg" } });
+  return bugJson({ ok: true, id }, 201);
 }
 
 async function stats(request, env) {
