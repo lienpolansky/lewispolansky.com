@@ -254,11 +254,12 @@ var ICON = { mac: '<svg viewBox="0 0 384 512"><path d="M319 269c0-37 16-64 50-85
 var PLAT = { 'mac-arm': ['Mac', 'Apple silicon'], 'windows': ['Windows', '64-bit'] }, ALIAS = { 'mac-arm64': 'mac-arm', 'win-x64': 'windows' };
 var SETUP_STEPS = {
   mac: ['Open <b>{setup}</b> from your downloads.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Right-click the app in Applications, choose <b>Open</b>, then <b>Open</b> again.'],
-  windows: ['Open <b>{setup}</b> from your downloads.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.', 'Setup downloads the game ({size}) and gets it ready to play.']
+  windows: ['Open <b>{setup}</b> from your downloads.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.', 'Setup downloads the game ({size}) and puts <b>GTAD South Pas</b> on your Desktop and in the Start menu.']
 }, SETUP = {};
-// Which platforms lead with their installer. Off: the zip is the big button and the installer a small "New: installer (beta)"
-// link, until a player confirms the installer works; then set true here.
-var LEAD_WITH_INSTALLER = { windows: false, mac: false };
+// An installer in beta stays a small "New: installer (beta)" link under the zip; otherwise it is the big button. gtad.json says
+// which ("installerBeta": true or false, on the build or at the top for Windows), so it flips without a deploy. If it says
+// nothing, the Windows Setup counts as beta (never run on a real PC yet) and the Mac DMG leads (mounted and checked).
+var BETA_DEFAULT = { windows: true, mac: false }, LEAD_WITH_INSTALLER = {};
 var STEPS = {
   mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications, then <b>right-click it and choose Open</b>. Choose Open again when your Mac asks.', 'If your Mac still says it cannot be opened, go to <b>System Settings &gt; Privacy and Security</b>, scroll down and click <b>Open Anyway</b>.'],
   windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>{exe}</b>.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
@@ -267,7 +268,9 @@ var STEPS = {
 var EXE = 'Grand Towing and Delivery.exe';
 function exeFor(v) { return /^0\.(\d|10)\./.test(v || '') ? 'SF Bayside.exe' : 'Grand Towing and Delivery.exe'; }
 var size = function (b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; };
-function tidy(d) { var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; var ins = x.installer && x.installer.url ? { url: x.installer.url, bytes: x.installer.size || 0, name: x.installer.name || '' } : null; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
+function tidy(d) { LEAD_WITH_INSTALLER = {}; var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; var ins = x.installer && x.installer.url ? { url: x.installer.url, bytes: x.installer.size || 0, name: x.installer.name || '' } : null, plat = (ALIAS[k] || k) === 'windows' ? 'windows' : 'mac';
+    var beta = typeof x.installerBeta === 'boolean' ? x.installerBeta : x.installer && typeof x.installer.beta === 'boolean' ? x.installer.beta : plat === 'windows' && d && typeof d.installerBeta === 'boolean' ? d.installerBeta : BETA_DEFAULT[plat];
+    if (ins) LEAD_WITH_INSTALLER[plat] = !beta; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
 function where() {
   var ua = navigator.userAgent || '', p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
   if (/iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/.test(p) && navigator.maxTouchPoints > 1)) return 'phone';
