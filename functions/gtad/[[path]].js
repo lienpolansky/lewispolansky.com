@@ -172,16 +172,19 @@ async function bug(request, env) {
 }
 
 // ---------- game logs, sent a chunk at a time ----------
-// POST /gtad/log?player=<name>&session=<id>&n=<chunk> with X-Gtad-Token and one gzip chunk (at most 256 KB) as the body.
+// POST /gtad/log?player=<name>&session=<id>&n=<chunk> with X-Gtad-Token and one gzip chunk (at most 512 KB) as the body.
+// The same can come as ?t=<token> with headers X-Gtad-Player, X-Gtad-Session and X-Gtad-Part (net-2's sender).
 // Stored at logs/<UTC date>/<player>-<session>/<n>.log.gz; the same chunk sent again overwrites itself. Never served back.
 // 2000 chunks an hour from one address: room for a house full of players each sending every minute.
-const MOST_LOG = 256 * 1024, LOGS_AN_HOUR = 2000;
+const MOST_LOG = 512 * 1024, LOGS_AN_HOUR = 2000;
 async function log(request, env, url) {
   if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "not taking logs yet" }, 503);
-  if (!same(request.headers.get("X-Gtad-Token") || "", await updaterToken(env.PASSCODE))) return bugJson({ ok: false, error: "ask Lewis for the link" }, 401);
+  const token = request.headers.get("X-Gtad-Token") || url.searchParams.get("t") || "";
+  if (!same(token, await updaterToken(env.PASSCODE))) return bugJson({ ok: false, error: "ask Lewis for the link" }, 401);
   if (Number(request.headers.get("Content-Length") || 0) > MOST_LOG) return bugJson({ ok: false, error: "too big", most: MOST_LOG }, 413);
-  const session = url.searchParams.get("session") || "", n = url.searchParams.get("n") || "";
-  const who = String(url.searchParams.get("player") || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
+  const h = k => request.headers.get(k);
+  const session = url.searchParams.get("session") || h("X-Gtad-Session") || "", n = url.searchParams.get("n") || h("X-Gtad-Part") || "";
+  const who = String(url.searchParams.get("player") || h("X-Gtad-Player") || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
   if (!/^[A-Za-z0-9-]{8,64}$/.test(session)) return bugJson({ ok: false, error: "bad request", why: "session" }, 400);
   if (!/^\d{1,6}$/.test(n)) return bugJson({ ok: false, error: "bad request", why: "n" }, 400);
   if (env.LEDGER) {
