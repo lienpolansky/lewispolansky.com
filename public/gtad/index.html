@@ -256,6 +256,9 @@ var SETUP_STEPS = {
   mac: ['Open <b>{setup}</b> from your downloads.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Right-click the app in Applications, choose <b>Open</b>, then <b>Open</b> again.'],
   windows: ['Open <b>{setup}</b> from your downloads.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.', 'Setup downloads the game ({size}) and gets it ready to play.']
 }, SETUP = {};
+// Which platforms lead with their installer. Off: the zip is the big button and the installer a small "New: installer (beta)"
+// link, until a player confirms the installer works; then set true here.
+var LEAD_WITH_INSTALLER = { windows: false, mac: false };
 var STEPS = {
   mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications, then <b>right-click it and choose Open</b>. Choose Open again when your Mac asks.', 'If your Mac still says it cannot be opened, go to <b>System Settings &gt; Privacy and Security</b>, scroll down and click <b>Open Anyway</b>.'],
   windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>{exe}</b>.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
@@ -275,18 +278,20 @@ function draw(D, locked) {
   var get = document.getElementById('get'), mine = where(); get.innerHTML = '';
   get.hidden = locked; document.getElementById('ask').hidden = !locked; document.getElementById('phone').hidden = locked || mine !== 'phone';
   var first = mine === 'windows' ? 'windows' : 'mac-arm'; if (D.builds.windows && D.builds.windows.version) EXE = exeFor(D.builds.windows.version);
-  SETUP = {}; ['windows', 'mac-arm'].forEach(function (k) { var x = D.builds[k]; if (!locked && x && x.url && x.installer) SETUP[k === 'windows' ? 'windows' : 'mac'] = { name: x.installer.name, size: size(Math.max(x.bytes, x.installer.bytes)) }; });
+  SETUP = {}; ['windows', 'mac-arm'].forEach(function (k) { var x = D.builds[k]; if (!locked && x && x.url && x.installer && LEAD_WITH_INSTALLER[k === 'windows' ? 'windows' : 'mac']) SETUP[k === 'windows' ? 'windows' : 'mac'] = { name: x.installer.name, size: size(Math.max(x.bytes, x.installer.bytes)) }; });
   tab(first === 'windows' ? 'windows' : 'mac');
   if (locked) return;
   [first, first === 'windows' ? 'mac-arm' : 'windows'].forEach(function (id, k) {
     var b = D.builds[id], ok = !!(b && b.url), a = document.createElement(ok ? 'a' : 'div'), p = PLAT[id];
     a.className = 'dl' + (!ok ? ' off' : k === 0 && mine !== 'phone' ? '' : ' alt');
-    var ins = ok && b.installer, game = ok ? Math.max(b.bytes || 0, ins ? ins.bytes : 0) : 0;      // a small Setup fetches the game: show the game's size
+    var found = ok && b.installer, ins = found && LEAD_WITH_INSTALLER[id === 'windows' ? 'windows' : 'mac'] ? found : null;
+    var game = ok ? Math.max(b.bytes || 0, ins ? ins.bytes : 0) : 0;      // a small Setup fetches the game: show the game's size
     if (ok) { a.href = ins ? ins.url : b.url; a.setAttribute('download', ins && ins.name ? ins.name : ''); }
     a.innerHTML = '<span>' + ICON[id === 'windows' ? 'windows' : 'mac'] + (ok ? 'Download for ' + p[0] : p[0] + ': coming soon') + '<span class="sub">' + p[1] + (ok && b.version ? ', ' + b.version : '') + (game ? ', ' + size(game) : '') + '</span></span>';
     if (k === 0 && ok && mine !== 'phone') { var h = document.createElement('div'); h.className = 'here'; h.textContent = 'Picked for this computer'; get.appendChild(h); }
     get.appendChild(a);
     if (ins) { var z = document.createElement('a'); z.className = 'zip'; z.href = b.url; z.setAttribute('download', ''); z.textContent = 'or the zip' + (b.bytes ? ' (' + size(b.bytes) + ')' : ''); get.appendChild(z); }
+    else if (found) { var t = document.createElement('a'); t.className = 'zip'; t.href = found.url; t.setAttribute('download', found.name || ''); t.textContent = 'New: installer (beta)'; get.appendChild(t); }
     // a new, unsigned game trips SmartScreen and some antivirus: three short lines on the way past
     if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>' + EXE + '</b>. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find ' + EXE.replace('.exe', '') + ', <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
     // Gatekeeper blocks a game that is not notarised ("Apple could not verify..."): the way past it, short.
