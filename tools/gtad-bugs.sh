@@ -4,7 +4,7 @@
 #   tools/gtad-bugs.sh 50       the 50 newest
 #   tools/gtad-bugs.sh rm <id>  delete one report (id as listed, e.g. 2026-11-26/053012-leo-a1b2c3)
 #   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload)
-#   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log
+#   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log, and say where they came from
 #   tools/gtad-bugs.sh logs rm <player-session>  delete that session's chunks
 # Keys come from ~/.config/gtad/r2.env (GTAD_R2_ACCESS_KEY_ID, GTAD_R2_SECRET_ACCESS_KEY) and are never printed. Needs the aws CLI.
 set -euo pipefail
@@ -48,7 +48,12 @@ for sess, (c, last) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:2
   for k in $keys; do s3 cp --quiet "s3://$BUCKET/$k" "$tmp/$(echo "$k" | tr / _)"; done
   # chunks in order: by date folder, then chunk number (a session may cross midnight UTC)
   ls "$tmp" | sort -t_ -k2,2 -k4,4n | while read f; do gunzip -c "$tmp/$f"; done > "$OUT/logs/$sess.log"
-  echo "$OUT/logs/$sess.log ($(echo "$keys" | wc -l | tr -d ' ') chunks, $(wc -l < "$OUT/logs/$sess.log" | tr -d ' ') lines)"; exit 0
+  first=$(echo "$keys" | head -n 1); geo=$(aws s3api head-object --endpoint-url "$EP" --bucket "$BUCKET" --key "$first" --query Metadata --output json 2>/dev/null | /usr/bin/python3 -c 'import json,sys
+try: m = json.load(sys.stdin) or {}
+except Exception: m = {}
+p = ", ".join(x for x in (m.get("city"), m.get("region"), m.get("country")) if x)
+print((p + (" (" + m["timezone"] + ")" if m.get("timezone") else "")) if p or m.get("timezone") else "")' || true)
+  echo "$OUT/logs/$sess.log ($(echo "$keys" | wc -l | tr -d ' ') chunks, $(wc -l < "$OUT/logs/$sess.log" | tr -d ' ') lines)${geo:+, sent from $geo}"; exit 0
 fi
 
 N="${1:-20}"; mkdir -p "$OUT"

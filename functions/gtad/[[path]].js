@@ -164,7 +164,7 @@ async function bug(request, env) {
   const at = new Date(), day = at.toISOString().slice(0, 10), time = at.toISOString().slice(11, 19).replace(/:/g, "");
   const who = String(report.player || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "anon";
   const id = `${day}/${time}-${who}-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, "0")).join("")}`;
-  const stored = { ...report, _received: { at: at.toISOString(), country: (request.cf && request.cf.country) || null, agent: (request.headers.get("User-Agent") || "").slice(0, 200), shot: !!shot } };
+  const stored = { ...report, _received: { at: at.toISOString(), ...where(request), agent: (request.headers.get("User-Agent") || "").slice(0, 200), shot: !!shot } };
   await env.BUCKET.put(`bugs/${id}/report.json`, JSON.stringify(stored, null, 1), { httpMetadata: { contentType: "application/json" } });
   if (shot) await env.BUCKET.put(`bugs/${id}/shot.jpg`, shot, { httpMetadata: { contentType: "image/jpeg" } });
   if (mark) await env.BUCKET.put(mark, id, { httpMetadata: { contentType: "text/plain" } });
@@ -174,9 +174,12 @@ async function bug(request, env) {
 // ---------- game logs, sent a chunk at a time ----------
 // POST /gtad/log?player=<name>&session=<id>&n=<chunk> with X-Gtad-Token and one gzip chunk (at most 512 KB) as the body.
 // The same can come as ?t=<token> with headers X-Gtad-Player, X-Gtad-Session and X-Gtad-Part (net-2's sender).
-// Stored at logs/<UTC date>/<player>-<session>/<n>.log.gz; the same chunk sent again overwrites itself. Never served back.
+// Stored at logs/<UTC date>/<player>-<session>/<n>.log.gz, with where() as the object's metadata; the same chunk sent again overwrites itself. Never served back.
 // 2000 chunks an hour from one address: room for a house full of players each sending every minute.
 const MOST_LOG = 512 * 1024, LOGS_AN_HOUR = 2000;
+// Where a sender is, as Cloudflare places the address (city, region, country, its time zone): stamped on each log chunk and bug
+// report, so a log's clock times can be read in the player's own time. Never the address itself; a field Cloudflare lacks is "".
+function where(request) { const cf = request.cf || {}, t = v => String(v == null ? "" : v).slice(0, 80); return { city: t(cf.city), region: t(cf.region), country: t(cf.country), timezone: t(cf.timezone) }; }
 async function log(request, env, url) {
   if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "not taking logs yet" }, 503);
   const token = request.headers.get("X-Gtad-Token") || url.searchParams.get("t") || "";
@@ -197,7 +200,7 @@ async function log(request, env, url) {
   if (body.length > MOST_LOG) return bugJson({ ok: false, error: "too big", most: MOST_LOG }, 413);
   if (body.length < 18 || body[0] !== 0x1f || body[1] !== 0x8b) return bugJson({ ok: false, error: "bad request", why: "not gzip" }, 400);
   const k = `logs/${new Date().toISOString().slice(0, 10)}/${who}-${session}/${n.padStart(6, "0")}.log.gz`;
-  await env.BUCKET.put(k, body, { httpMetadata: { contentType: "application/gzip" } });
+  await env.BUCKET.put(k, body, { httpMetadata: { contentType: "application/gzip" }, customMetadata: where(request) });
   return bugJson({ ok: true, key: k.slice(5) }, 201);
 }
 
