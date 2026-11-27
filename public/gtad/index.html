@@ -78,6 +78,14 @@ h1 .full { font: 400 14px/1.5 'IBM Plex Sans', sans-serif; color: var(--mut); te
 /* store block: media left, buy box right */
 .store { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 24px; padding-top: 48px; }
 .stage { background: #000; aspect-ratio: 16 / 9; position: relative; }
+.stage img.gimg { position: absolute; inset: 0; opacity: 0; transition: opacity .35s ease; }
+.stage img.gimg.on { opacity: 1; }
+.gnav { position: absolute; z-index: 1; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); border: 0; color: var(--ink); cursor: pointer; opacity: .8; transition: opacity .15s ease, color .15s ease; }
+.gnav:hover { opacity: 1; color: var(--gold); }
+.gnav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; }
+.gnav.prev { left: 8px; } .gnav.next { right: 8px; }
+.stage .count { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.72); font-size: 12px; padding: 2px 8px; color: var(--ink); pointer-events: none; }
+.stage { overflow: hidden; }
 .stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .stage .tag { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.72); font: 400 12px/1.5 'IBM Plex Sans', sans-serif; padding: 2px 8px; color: var(--ink); pointer-events: none; }
 .strip { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 7 * 8px) / 8); gap: 8px; overflow-x: auto; margin-top: 8px; padding-bottom: 8px; scrollbar-width: thin; }
@@ -195,8 +203,10 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
 <main>
   <div class="wrap store">
     <div>
-      <div class="stage" id="stage">
-        <span class="tag" id="stagetag"></span>
+      <div class="stage" id="stage" aria-roledescription="gallery" aria-label="Screenshots, use the arrow keys">
+        <button class="gnav prev" id="gprev" type="button" aria-label="Previous screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="gnav next" id="gnext" type="button" aria-label="Next screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+        <span class="tag" id="stagetag"></span><span class="count mono" id="gcount"></span>
       </div>
       <div class="strip" id="strip" aria-label="Screenshots"></div>
       <div class="info">
@@ -273,13 +283,24 @@ var hero = document.getElementById('hero'), film = document.getElementById('film
 function playFilm() { hero.classList.add('playing'); film.hidden = false; closefilm.hidden = false; film.muted = false; film.volume = 1; film.currentTime = 0; var p = film.play(); if (p && p.catch) p.catch(function () {}); }
 function stopFilm() { film.pause(); hero.classList.remove('playing'); film.hidden = true; closefilm.hidden = true; }
 play.onclick = playFilm; document.getElementById('poster').onclick = playFilm; closefilm.onclick = stopFilm; film.addEventListener('ended', stopFilm);
+// Gallery: a large picture that crossfades, a row of thumbnails, and the left and right arrow keys (or the arrows on the picture).
+var cur = 0, gcount = document.getElementById('gcount');
 function show(i) {
-  strip.querySelectorAll('button').forEach(function (b, k) { b.setAttribute('aria-current', k === i ? 'true' : 'false'); });
-  var old = stage.querySelector('img'); if (old) old.remove();
-  var im = document.createElement('img'); im.src = SHOTS[i][0]; im.alt = SHOTS[i][1]; stage.insertBefore(im, tag); tag.textContent = SHOTS[i][1];
+  i = (i + SHOTS.length) % SHOTS.length; cur = i;
+  strip.querySelectorAll('button').forEach(function (b, k) { b.setAttribute('aria-current', k === i ? 'true' : 'false'); if (k === i) strip.scrollLeft = Math.max(0, b.offsetLeft - (strip.clientWidth - b.offsetWidth) / 2); });
+  var im = document.createElement('img'); im.alt = SHOTS[i][1]; im.width = 1600; im.height = 900; im.className = 'gimg';
+  var on = function () { requestAnimationFrame(function () { im.classList.add('on'); setTimeout(function () { stage.querySelectorAll('img.gimg').forEach(function (o) { if (o !== im) o.remove(); }); }, 400); }); };
+  im.onload = on; im.src = SHOTS[i][0]; stage.insertBefore(im, document.getElementById('gprev'));
+  tag.textContent = SHOTS[i][1]; gcount.textContent = (i + 1) + ' / ' + SHOTS.length;
 }
+document.getElementById('gprev').onclick = function () { show(cur - 1); }; document.getElementById('gnext').onclick = function () { show(cur + 1); };
+document.addEventListener('keydown', function (e) {
+  if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || hero.classList.contains('playing')) return;
+  var t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT|VIDEO)$/.test(t.tagName) || t.isContentEditable)) return;
+  if (e.key === 'ArrowRight') { show(cur + 1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { show(cur - 1); e.preventDefault(); }
+});
 (function () {
-  SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="' + s[1].replace(/"/g, '&quot;') + '">'; b.onclick = function () { show(k); }; strip.appendChild(b); });
+  SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', s[1]); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="" width="160" height="90">'; b.onclick = function () { show(k); }; strip.appendChild(b); });
   show(0);
 })();
 
