@@ -3,8 +3,8 @@
 #   tools/gtad-bugs.sh          download the 20 newest reports into ~/Downloads/gtad-bugs/ and list them
 #   tools/gtad-bugs.sh 50       the 50 newest
 #   tools/gtad-bugs.sh rm <id>  delete one report (id as listed, e.g. 2026-11-26/053012-leo-a1b2c3)
-#   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload)
-#   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log
+#   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload, then name, city (country), build and GPU)
+#   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log, and say where they came from
 #   tools/gtad-bugs.sh logs rm <player-session>  delete that session's chunks
 # Keys come from ~/.config/gtad/r2.env (GTAD_R2_ACCESS_KEY_ID, GTAD_R2_SECRET_ACCESS_KEY) and are never printed. Needs the aws CLI.
 set -euo pipefail
@@ -33,13 +33,23 @@ if [ "${1:-}" = "logs" ]; then
   fi
   if [ -z "${2:-}" ]; then
     [ -n "$all" ] || { echo "no game logs yet"; exit 0; }
+    # the 20 newest sessions; beside each, what its first part says: name, city (country), build and GPU
     echo "$all" | /usr/bin/python3 -c '
 import sys, collections
 s = collections.OrderedDict()
 for line in sys.stdin:
     d, t, k = line.split(None, 2); k = k.strip(); sess = k.split("/")[2]
-    c, last = s.get(sess, (0, "")); s[sess] = (c + 1, max(last, d + " " + t))
-for sess, (c, last) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:20]: print("%-48s %4d chunks  last %s" % (sess, c, last))'
+    c, last, first = s.get(sess, (0, "", k)); s[sess] = (c + 1, max(last, d + " " + t), min(first, k))
+for sess, (c, last, first) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:20]: print("\t".join((sess, str(c), last, first)))' |
+    while IFS=$'\t' read -r sess c last first; do
+      meta=$(aws s3api head-object --endpoint-url "$EP" --bucket "$BUCKET" --key "$first" --query Metadata --output json 2>/dev/null || echo '{}')
+      printf '%s' "$meta" | /usr/bin/python3 -c '
+import json, sys
+try: m = json.load(sys.stdin) or {}
+except Exception: m = {}
+sess, c, last = sys.argv[1:4]; place = m.get("city", "") + (" (" + m["country"] + ")" if m.get("country") else "")
+print("%-44s %4s chunks  last %s  %-16s %-26s %-12s %s" % (sess, c, last, m.get("name", "")[:16], place[:26], m.get("build", "")[:12], m.get("gpu", "")[:40]))' "$sess" "$c" "$last"
+    done
     exit 0
   fi
   sess="$2"; keys=$(echo "$all" | awk '{print $3}' | { grep "/$sess/" || true; })
@@ -48,7 +58,12 @@ for sess, (c, last) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:2
   for k in $keys; do s3 cp --quiet "s3://$BUCKET/$k" "$tmp/$(echo "$k" | tr / _)"; done
   # chunks in order: by date folder, then chunk number (a session may cross midnight UTC)
   ls "$tmp" | sort -t_ -k2,2 -k4,4n | while read f; do gunzip -c "$tmp/$f"; done > "$OUT/logs/$sess.log"
-  echo "$OUT/logs/$sess.log ($(echo "$keys" | wc -l | tr -d ' ') chunks, $(wc -l < "$OUT/logs/$sess.log" | tr -d ' ') lines)"; exit 0
+  first=$(echo "$keys" | head -n 1); geo=$(aws s3api head-object --endpoint-url "$EP" --bucket "$BUCKET" --key "$first" --query Metadata --output json 2>/dev/null | /usr/bin/python3 -c 'import json,sys
+try: m = json.load(sys.stdin) or {}
+except Exception: m = {}
+p = ", ".join(x for x in (m.get("city"), m.get("region"), m.get("country")) if x)
+print((p + (" (" + m["timezone"] + ")" if m.get("timezone") else "")) if p or m.get("timezone") else "")' || true)
+  echo "$OUT/logs/$sess.log ($(echo "$keys" | wc -l | tr -d ' ') chunks, $(wc -l < "$OUT/logs/$sess.log" | tr -d ' ') lines)${geo:+, sent from $geo}"; exit 0
 fi
 
 N="${1:-20}"; mkdir -p "$OUT"
