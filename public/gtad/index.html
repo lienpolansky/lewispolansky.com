@@ -36,8 +36,6 @@ a { color: var(--gold); }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
 
 /* title bar */
-.top { border-bottom: 1px solid var(--line); background: #0e0d0b; }
-.top .wrap { display: flex; align-items: baseline; gap: 14px; padding-top: 16px; padding-bottom: 16px; flex-wrap: wrap; }
 .crumb { font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--mut); width: 100%; display: flex; align-items: center; gap: 12px; }
 .studio { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); text-decoration: none; }
 .studio .by { color: var(--mut); }
@@ -56,20 +54,43 @@ h1 span { color: var(--gold); }
 h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(--mut); text-transform: none; letter-spacing: 0; vertical-align: middle; margin-left: 6px; }
 .mark .full { display: block; margin: 4px 0 0; font-size: 13px; color: #d9d2c3; text-shadow: none; }
 
+/* hero: the trailer's poster behind the lockup; the trailer plays only when asked, with sound */
+.hero { position: relative; min-height: min(78vh, 640px); display: flex; align-items: flex-end; background: #000; border-bottom: 1px solid var(--line); overflow: hidden; }
+.hero-media { position: absolute; inset: 0; }
+.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+.hero-shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(14,13,12,.94) 0%, rgba(14,13,12,.72) 40%, rgba(14,13,12,.12) 72%), linear-gradient(0deg, rgba(14,13,12,1) 0%, rgba(14,13,12,0) 50%); }
+.hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.hero-in { position: relative; z-index: 1; width: 100%; padding-top: 32px; padding-bottom: 40px; pointer-events: none; }
+.hero-in > * { pointer-events: auto; }
+.hero-pitch { max-width: 560px; margin-top: 16px; font-size: 16px; line-height: 1.5; color: var(--ink); }
+.play { position: absolute; z-index: 2; left: 70%; top: 46%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 16px; padding: 0; background: none; border: 0; color: var(--ink); cursor: pointer; font: 400 24px/1.1 'Anton', sans-serif; letter-spacing: .04em; text-transform: uppercase; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+.play svg { width: 88px; height: 88px; padding: 24px 22px 24px 26px; border-radius: 50% !important; background: var(--gold); fill: #1a1509; box-shadow: 0 8px 32px rgba(0,0,0,.5); transition: transform .15s ease, background .15s ease; }
+.play small { display: block; font: 500 12px 'IBM Plex Sans', sans-serif; letter-spacing: .08em; color: var(--mut); margin-top: 4px; }
+.play:hover svg { background: #ffc15e; transform: scale(1.05); }
+.play:focus-visible svg { outline: 2px solid var(--ink); outline-offset: 4px; }
+.closefilm { position: absolute; z-index: 3; right: 16px; top: 16px; padding: 8px 16px; background: rgba(0,0,0,.7); color: var(--ink); border: 1px solid var(--line); font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+.hero.playing .hero-bg, .hero.playing .hero-shade, .hero.playing .play, .hero.playing .hero-in { display: none; }
+@media (max-width: 860px) {
+  .hero { display: block; min-height: 0; background: var(--bg); }
+  .hero-media { position: relative; aspect-ratio: 16 / 9; }
+  .hero-shade { background: linear-gradient(0deg, rgba(14,13,12,1) 0%, rgba(14,13,12,0) 40%); }
+  .play { left: 50%; top: 50%; flex-direction: column; gap: 8px; font-size: 16px; text-align: center; }
+  .play svg { width: 64px; height: 64px; padding: 18px 16px 18px 20px; }
+  .play small { display: none; }
+  .hero.playing .hero-in { display: block; }
+  .hero-in { padding-top: 16px; padding-bottom: 24px; }
+}
+
 /* store block: media left, buy box right */
 .store { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 20px; padding-top: 20px; }
 .stage { background: #000; aspect-ratio: 16 / 9; position: relative; border: 1px solid var(--line); }
-.stage video, .stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.stage .sound { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 10px; padding: 14px 22px; background: var(--gold); color: #1a1509; border: 0; font: 400 22px 'Anton', sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
-.stage .sound svg { width: 26px; height: 26px; fill: currentColor; }
-.stage .sound:hover { background: #ffc15e; }
+.stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .stage .tag { position: absolute; left: 10px; bottom: 10px; background: rgba(0,0,0,.72); font: 500 11px 'IBM Plex Mono', monospace; padding: 3px 7px; letter-spacing: .04em; color: var(--ink); pointer-events: none; }
 .strip { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 6 * 6px) / 7); gap: 6px; overflow-x: auto; margin-top: 6px; padding-bottom: 4px; scrollbar-width: thin; }
 .strip button { padding: 0; border: 2px solid transparent; background: #000; cursor: pointer; aspect-ratio: 16 / 9; position: relative; }
 .strip button img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .75; }
 .strip button:hover img, .strip button[aria-current="true"] img { opacity: 1; }
 .strip button[aria-current="true"] { border-color: var(--gold); }
-.strip .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 400 13px 'Anton', sans-serif; letter-spacing: .08em; color: var(--ink); background: rgba(0,0,0,.35); }
 
 .buy { background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; }
 .capsule { aspect-ratio: 16 / 9; overflow: hidden; border-bottom: 1px solid var(--line); }
@@ -151,17 +172,25 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap">
-  <div class="titlerow"><img class="appicon" src="media/app-icon.png" alt="" width="64" height="64"><h1>GTAD: <span>South Pas</span> <small class="full">(Grand Towing and Delivery)</small></h1><span class="studio"><span class="by">By</span><img src="media/l2-creations.png" alt="L2 Creations"><span class="name">L2 Creations</span></span></div>
-</div></header>
+<header class="hero" id="hero">
+  <div class="hero-media">
+    <img class="hero-bg" id="poster" src="media/trailer_poster.jpg?v=cut1" alt="" width="960" height="540">
+    <video id="film" src="media/trailer.mp4?v=cut1" poster="media/trailer_poster.jpg?v=cut1" controls playsinline preload="none" hidden></video>
+    <div class="hero-shade"></div>
+    <button class="play" id="play" type="button" aria-label="Play the trailer with sound"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Play trailer<small>With sound</small></span></button>
+    <button class="closefilm" id="closefilm" type="button" hidden>Close trailer</button>
+  </div>
+  <div class="wrap hero-in">
+    <div class="titlerow"><img class="appicon" src="media/app-icon.png" alt="" width="64" height="64"><h1>GTAD: <span>South Pas</span> <small class="full">(Grand Towing and Delivery)</small></h1><span class="studio"><span class="by">By</span><img src="media/l2-creations.png" alt="L2 Creations"><span class="name">L2 Creations</span></span></div>
+    <p class="hero-pitch">Haul a five-tier wedding cake across South Pasadena. Don't drop it. Then buy the street.</p>
+  </div>
+</header>
 
 <main>
   <div class="wrap store">
     <div>
       <div class="stage" id="stage">
-        <video id="film" src="media/trailer.mp4?v=cut1" poster="media/trailer_poster.jpg?v=cut1" controls muted playsinline preload="metadata"></video>
-        <button class="sound" id="sound" type="button"><svg viewBox="0 0 640 512" aria-hidden="true"><path d="M533 98c-10-9-25-8-34 2s-8 25 2 34c34 31 55 76 55 126s-21 95-55 126c-10 9-11 24-2 34s24 11 34 2c44-40 71-97 71-162s-27-122-71-162zM473 166c-10-9-25-8-34 2s-8 25 2 34c16 14 25 35 25 58s-9 44-25 58c-10 9-11 24-2 34s24 11 34 2c26-23 41-57 41-94s-15-71-41-94zM301 35c-11-5-25-3-34 5L132 160H64c-35 0-64 29-64 64v64c0 35 29 64 64 64h68l135 120c9 8 23 10 34 5s19-16 19-29V64c0-13-7-24-19-29z"/></svg>Sound on</button>
-        <span class="tag" id="stagetag">Trailer</span>
+        <span class="tag" id="stagetag"></span>
       </div>
       <div class="strip" id="strip" aria-label="Screenshots"></div>
       <div class="info">
@@ -228,7 +257,7 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
 <footer class="foot wrap" id="foot">Made in South Pasadena.</footer>
 
 <script>
-// Screenshots: real game captures and in-game listing photos. The first tile is the trailer.
+// Screenshots: real game captures and in-game listing photos. The trailer lives in the hero.
 var SHOTS = [
   ['media/t_cake_day.jpg', 'A wedding cake waiting at its pickup ring on Mission St'],
   ['media/t_driving.jpg', 'Driving through town with the job card'],
@@ -239,19 +268,20 @@ var SHOTS = [
   ['media/b081_front.jpg', 'The Rialto, a landmark you can own'],
   ['media/t_theatre.jpg', 'A pickup outside the theatre']
 ];
-var stage = document.getElementById('stage'), strip = document.getElementById('strip'), film = document.getElementById('film'), tag = document.getElementById('stagetag');
-// Browsers start a video only without sound, so the trailer waits behind one obvious button that turns the sound on and plays it.
-var sound = document.getElementById('sound'); sound.onclick = function () { film.muted = false; film.volume = 1; film.currentTime = 0; film.play(); sound.hidden = true; };
-film.addEventListener('volumechange', function () { if (!film.muted) sound.hidden = true; });
+var stage = document.getElementById('stage'), strip = document.getElementById('strip'), tag = document.getElementById('stagetag');
+// The trailer has Jayzo's sound mix, so it never starts by itself, not even muted: the hero shows its poster and a play button,
+// and only a click or tap plays it, with the sound on.
+var hero = document.getElementById('hero'), film = document.getElementById('film'), play = document.getElementById('play'), closefilm = document.getElementById('closefilm');
+function playFilm() { hero.classList.add('playing'); film.hidden = false; closefilm.hidden = false; film.muted = false; film.volume = 1; film.currentTime = 0; var p = film.play(); if (p && p.catch) p.catch(function () {}); }
+function stopFilm() { film.pause(); hero.classList.remove('playing'); film.hidden = true; closefilm.hidden = true; }
+play.onclick = playFilm; document.getElementById('poster').onclick = playFilm; closefilm.onclick = stopFilm; film.addEventListener('ended', stopFilm);
 function show(i) {
   strip.querySelectorAll('button').forEach(function (b, k) { b.setAttribute('aria-current', k === i ? 'true' : 'false'); });
   var old = stage.querySelector('img'); if (old) old.remove();
-  if (i === 0) { film.hidden = false; tag.textContent = 'Trailer'; sound.hidden = !film.muted; return; }
-  film.pause(); film.hidden = true; sound.hidden = true; var im = document.createElement('img'); im.src = SHOTS[i - 1][0]; im.alt = SHOTS[i - 1][1]; stage.insertBefore(im, tag); tag.textContent = SHOTS[i - 1][1];
+  var im = document.createElement('img'); im.src = SHOTS[i][0]; im.alt = SHOTS[i][1]; stage.insertBefore(im, tag); tag.textContent = SHOTS[i][1];
 }
 (function () {
-  var t = document.createElement('button'); t.innerHTML = '<img src="media/trailer_poster.jpg?v=cut1" alt=""><span class="play">Trailer</span>'; t.onclick = function () { show(0); }; strip.appendChild(t);
-  SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="' + s[1].replace(/"/g, '&quot;') + '">'; b.onclick = function () { show(k + 1); }; strip.appendChild(b); });
+  SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="' + s[1].replace(/"/g, '&quot;') + '">'; b.onclick = function () { show(k); }; strip.appendChild(b); });
   show(0);
 })();
 
