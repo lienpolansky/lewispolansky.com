@@ -49,6 +49,7 @@ h1 span { color: var(--gold); }
 .titlerow .appicon { width: clamp(44px, 5.6vw, 64px); height: auto; aspect-ratio: 1; border-radius: 22.5% !important; flex: none; box-shadow: 0 2px 10px rgba(0,0,0,.45); }
 .macnote { font-size: 12.5px; color: var(--mut); margin: -2px 0 2px; line-height: 1.45; }
 .macnote ol { margin: 4px 0 6px 18px; padding: 0; }
+.macnote b { color: var(--ink); font-weight: 600; }
 .macnote code { display: block; font: 500 11.5px 'IBM Plex Mono', monospace; color: var(--ink); background: #0e0d0b; border: 1px solid var(--line); padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-all; user-select: all; }
 h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(--mut); text-transform: none; letter-spacing: 0; vertical-align: middle; margin-left: 6px; }
 .mark .full { display: block; margin: 4px 0 0; font-size: 13px; color: #d9d2c3; text-shadow: none; }
@@ -253,7 +254,7 @@ function show(i) {
 var ICON = { mac: '<svg viewBox="0 0 384 512"><path d="M319 269c0-37 16-64 50-85-19-27-47-42-85-45-35-3-74 21-88 21-15 0-49-20-76-20C64 141 5 185 5 274c0 26 5 53 14 81 13 37 59 127 107 125 25-1 43-18 76-18 32 0 48 18 76 18 49-1 90-83 103-119-66-31-62-90-62-92zM262 105c28-33 25-63 24-74-24 1-52 16-68 35-18 20-28 45-26 73 26 2 50-11 70-34z"/></svg>', windows: '<svg viewBox="0 0 448 512"><path d="M0 93l183-25v177H0V93zm0 326l183 25V269H0v150zm203 28l245 33V269H203v178zm0-382v180h245V32L203 65z"/></svg>' };
 var PLAT = { 'mac-arm': ['Mac', 'Apple silicon'], 'windows': ['Windows', '64-bit'] }, ALIAS = { 'mac-arm64': 'mac-arm', 'win-x64': 'windows' };
 var SETUP_STEPS = {
-  mac: ['Open <b>{setup}</b> from your downloads.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Right-click the app in Applications, choose <b>Open</b>, then <b>Open</b> again.'],
+  mac: ['Open <b>{setup}</b> from your downloads.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Open the game once. Your Mac says it cannot verify it: click <b>Done</b>.', 'Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to Grand Towing and Delivery. Confirm with your password or Touch ID.', 'From then on it opens normally.'],
   windows: ['Open <b>{setup}</b> from your downloads.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.', 'Setup downloads the game ({size}) and puts <b>GTAD South Pas</b> on your Desktop and in the Start menu.']
 }, SETUP = {};
 // An installer in beta stays a small "New: installer (beta)" link under the zip; otherwise it is the big button. gtad.json says
@@ -261,7 +262,7 @@ var SETUP_STEPS = {
 // nothing, the Windows Setup counts as beta (never run on a real PC yet) and the Mac DMG leads (mounted and checked).
 var BETA_DEFAULT = { windows: true, mac: false }, LEAD_WITH_INSTALLER = {};
 var STEPS = {
-  mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications, then <b>right-click it and choose Open</b>. Choose Open again when your Mac asks.', 'If your Mac still says it cannot be opened, go to <b>System Settings &gt; Privacy and Security</b>, scroll down and click <b>Open Anyway</b>.'],
+  mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Open the game once. Your Mac says it cannot verify it: click <b>Done</b>.', 'Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to Grand Towing and Delivery. Confirm with your password or Touch ID.', 'From then on it opens normally.'],
   windows: ['Right-click the <b>zip</b> you downloaded and choose <b>Extract All</b>.', 'Open the folder and double-click <b>{exe}</b>.', 'If a blue <b>Windows protected your PC</b> box appears, click <b>More info</b>, then <b>Run anyway</b>.']
 };
 // The Windows program was "SF Bayside.exe" up to 0.10.x; from 0.11.0 it carries the game's name.
@@ -298,7 +299,7 @@ function draw(D, locked) {
     // a new, unsigned game trips SmartScreen and some antivirus: three short lines on the way past
     if (id === 'windows' && ok) { var n = document.createElement('div'); n.className = 'winnote'; n.innerHTML = 'The program is called <b>' + EXE + '</b>. Blue SmartScreen box: <b>More info &gt; Run anyway</b>.<br>Antivirus removed it? A false alarm on new, unsigned games. <b>Norton:</b> Security &gt; History, find ' + EXE.replace('.exe', '') + ', <b>Restore</b> and exclude the folder.<br><b>Windows Defender:</b> Protection history, then <b>Allow on device</b>.'; get.appendChild(n); }
     // Gatekeeper blocks a game that is not notarised ("Apple could not verify..."): the way past it, short.
-    if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>If your Mac says it could not verify the app:</b><ol><li>' + (ins ? 'Open the dmg and drag it to Applications.' : 'Unzip it and drag it to Applications.') + '</li><li>Right-click the app, choose <b>Open</b>, then <b>Open</b> again.</li><li>Still stuck? <b>System Settings &gt; Privacy &amp; Security &gt; Open Anyway</b>.</li></ol>Or in Terminal:<code>xattr -dr com.apple.quarantine "/Applications/Grand Towing and Delivery.app"</code>'; get.appendChild(m); }
+    if (id === 'mac-arm' && ok) { var m = document.createElement('div'); m.className = 'macnote'; m.innerHTML = '<b>Installing on a Mac:</b><ol><li>' + (ins ? 'Open the disk image and drag the game into Applications.' : 'Unzip it and drag the game into Applications.') + '</li><li>Open the game once. Your Mac says it cannot verify it: click <b>Done</b>.</li><li>Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to Grand Towing and Delivery. Confirm with your password or Touch ID.</li><li>From then on it opens normally.</li></ol>Why: the game isn\'t signed with a paid Apple developer certificate. It is safe.'; get.appendChild(m); }
   });
   // one version when both builds agree, each platform's own when they do not ("0.11.0 Windows, 0.10.0 Mac")
   var vs = ['windows', 'mac-arm'].filter(function (k) { return D.builds[k] && D.builds[k].url && D.builds[k].version; }), one = vs.every(function (k) { return D.builds[k].version === D.builds[vs[0]].version; });
