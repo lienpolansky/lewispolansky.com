@@ -48,6 +48,13 @@ h1 span { color: var(--gold); }
 .titlerow .appicon { width: clamp(44px, 5.6vw, 64px); height: auto; aspect-ratio: 1; border-radius: 22.5% !important; flex: none; box-shadow: 0 2px 10px rgba(0,0,0,.45); }
 h1 .full { font: 400 14px/1.5 'IBM Plex Sans', sans-serif; color: var(--mut); text-transform: none; letter-spacing: 0; vertical-align: middle; margin-left: 8px; }
 
+/* status bar: the live version and when it was published, from gtad.json */
+.status { background: var(--bg); border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.5; color: var(--mut); }
+.status .wrap { display: flex; align-items: center; gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+.status .dot { width: 8px; height: 8px; border-radius: 50% !important; background: #3fae6a; box-shadow: 0 0 0 3px rgba(63,174,106,.18); }
+.status .mono { color: var(--ink); }
+.status .sep { margin: 0 8px; }
+
 /* hero: the trailer's poster behind the lockup; the trailer plays only when asked, with sound */
 .hero { position: relative; min-height: min(78vh, 640px); display: flex; align-items: flex-end; background: #000; overflow: hidden; }
 .hero-media { position: absolute; inset: 0; }
@@ -178,6 +185,7 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
 </style>
 </head>
 <body>
+<div class="status" id="status" hidden><div class="wrap"><span class="dot" aria-hidden="true"></span><span>Live: <span class="mono" id="livever"></span></span><span id="liveupd" hidden><span class="sep" aria-hidden="true">·</span>Updated <span class="mono" id="livedate"></span></span></div></div>
 <header class="hero" id="hero">
   <div class="hero-media">
     <img class="hero-bg" id="poster" src="media/trailer_poster.jpg?v=cut1" alt="" width="960" height="540">
@@ -325,9 +333,10 @@ var STEPS = {
 var EXE = 'Grand Towing and Delivery.exe';
 function exeFor(v) { return /^0\.(\d|10)\./.test(v || '') ? 'SF Bayside.exe' : 'Grand Towing and Delivery.exe'; }
 var size = function (b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; };
+var LAST_MODIFIED = '';
 function tidy(d) { LEAD_WITH_INSTALLER = {}; var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; var ins = x.installer && x.installer.url ? { url: x.installer.url, bytes: x.installer.size || 0, name: x.installer.name || '' } : null, plat = (ALIAS[k] || k) === 'windows' ? 'windows' : 'mac';
     var beta = plat === 'windows' && ins ? true : typeof x.installerBeta === 'boolean' ? x.installerBeta : x.installer && typeof x.installer.beta === 'boolean' ? x.installer.beta : plat === 'windows' && d && typeof d.installerBeta === 'boolean' ? d.installerBeta : BETA_DEFAULT[plat];
-    if (ins) LEAD_WITH_INSTALLER[plat] = !beta; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', date: (d && (d.date || d.updated || d.published || d.released)) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
+    if (ins) LEAD_WITH_INSTALLER[plat] = !beta; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', date: (d && (d.date || d.updated || d.published || d.released)) || LAST_MODIFIED, builds: b }; }      // a build may carry its own version (one platform can lead the other)
 function where() {
   var ua = navigator.userAgent || '', p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
   if (/iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/.test(p) && navigator.maxTouchPoints > 1)) return 'phone';
@@ -368,6 +377,8 @@ function draw(D, locked) {
   // one version when both builds agree, each platform's own when they do not ("0.11.0 Windows, 0.10.0 Mac")
   var vs = ['windows', 'mac-arm'].filter(function (k) { return D.builds[k] && D.builds[k].url && D.builds[k].version; }), one = vs.every(function (k) { return D.builds[k].version === D.builds[vs[0]].version; });
   var vtext = vs.length && !one ? vs.map(function (k) { return D.builds[k].version + ' ' + PLAT[k][0]; }).join(', ') : (vs.length ? D.builds[vs[0]].version : D.version);
+  // The status bar. Open towns are not counted here: /gtad/towns needs the game's token, which never goes in this page.
+  if (vtext) { document.getElementById('livever').textContent = vtext; var nd = nice(D.date); document.getElementById('livedate').textContent = nd; document.getElementById('liveupd').hidden = !nd; document.getElementById('status').hidden = false; }
   if (vtext) { document.getElementById('ver').textContent = vtext; document.getElementById('ver2').textContent = vs.length && !one ? 'This build' : vtext; reveal('.vrow', true); }
   var sz = ['mac-arm', 'windows'].filter(function (k) { return D.builds[k] && D.builds[k].bytes; }).map(function (k) { return size(D.builds[k].bytes) + ' ' + PLAT[k][0]; });
   if (sz.length) { document.getElementById('size').textContent = sz.join(', ') + '; 12 GB free to install'; reveal('.srow', true); }
@@ -394,7 +405,7 @@ function useLink() {
   }, function () { why('Check your connection, then open the link again.'); });
 }
 function load() {
-  return fetch('gtad.json', { cache: 'no-store', credentials: 'same-origin' }).then(function (r) { if (r.status == 401) return null; if (!r.ok) throw new Error('gtad.json ' + r.status); return r.json(); })
+  return fetch('gtad.json', { cache: 'no-store', credentials: 'same-origin' }).then(function (r) { if (r.status == 401) return null; LAST_MODIFIED = r.headers.get('Last-Modified') || ''; if (!r.ok) throw new Error('gtad.json ' + r.status); return r.json(); })
     .then(function (d) { draw(tidy(d), !d); }, function () { draw(tidy(null), true); why('The build list did not load. Try again in a moment.'); });
 }
 useLink().then(load);

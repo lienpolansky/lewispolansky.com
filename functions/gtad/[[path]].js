@@ -99,6 +99,7 @@ async function serve(request, env, key) {
   const head = await env.BUCKET.head(key); if (!head) return null;
   const headers = new Headers(); head.writeHttpMetadata(headers); headers.set("ETag", head.httpEtag); headers.set("Accept-Ranges", "bytes");
   if (LOCKED(key)) headers.set("Cache-Control", key.startsWith("builds/") ? "private, max-age=31536000, immutable" : "no-store");
+  if (key === "gtad.json" && head.uploaded) headers.set("Last-Modified", head.uploaded.toUTCString());      // the page shows it as "Updated <date>" when the list carries no date
   if (request.headers.get("If-None-Match") === head.httpEtag) return new Response(null, { status: 304, headers });
   let range = parseRange(request.headers.get("Range"), head.size);
   const ifRange = request.headers.get("If-Range"); if (range && ifRange && ifRange !== head.httpEtag) range = null;
