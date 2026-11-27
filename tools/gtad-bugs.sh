@@ -3,7 +3,7 @@
 #   tools/gtad-bugs.sh          download the 20 newest reports into ~/Downloads/gtad-bugs/ and list them
 #   tools/gtad-bugs.sh 50       the 50 newest
 #   tools/gtad-bugs.sh rm <id>  delete one report (id as listed, e.g. 2026-11-26/053012-leo-a1b2c3)
-#   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload)
+#   tools/gtad-bugs.sh logs                 list the 20 newest game log sessions (player-session, chunks, last upload, then name, city (country), build and GPU)
 #   tools/gtad-bugs.sh logs <player-session>  join that session's chunks, in order, into ~/Downloads/gtad-bugs/logs/<it>.log, and say where they came from
 #   tools/gtad-bugs.sh logs rm <player-session>  delete that session's chunks
 # Keys come from ~/.config/gtad/r2.env (GTAD_R2_ACCESS_KEY_ID, GTAD_R2_SECRET_ACCESS_KEY) and are never printed. Needs the aws CLI.
@@ -33,13 +33,23 @@ if [ "${1:-}" = "logs" ]; then
   fi
   if [ -z "${2:-}" ]; then
     [ -n "$all" ] || { echo "no game logs yet"; exit 0; }
+    # the 20 newest sessions; beside each, what its first part says: name, city (country), build and GPU
     echo "$all" | /usr/bin/python3 -c '
 import sys, collections
 s = collections.OrderedDict()
 for line in sys.stdin:
     d, t, k = line.split(None, 2); k = k.strip(); sess = k.split("/")[2]
-    c, last = s.get(sess, (0, "")); s[sess] = (c + 1, max(last, d + " " + t))
-for sess, (c, last) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:20]: print("%-48s %4d chunks  last %s" % (sess, c, last))'
+    c, last, first = s.get(sess, (0, "", k)); s[sess] = (c + 1, max(last, d + " " + t), min(first, k))
+for sess, (c, last, first) in sorted(s.items(), key=lambda x: x[1][1], reverse=True)[:20]: print("\t".join((sess, str(c), last, first)))' |
+    while IFS=$'\t' read -r sess c last first; do
+      meta=$(aws s3api head-object --endpoint-url "$EP" --bucket "$BUCKET" --key "$first" --query Metadata --output json 2>/dev/null || echo '{}')
+      printf '%s' "$meta" | /usr/bin/python3 -c '
+import json, sys
+try: m = json.load(sys.stdin) or {}
+except Exception: m = {}
+sess, c, last = sys.argv[1:4]; place = m.get("city", "") + (" (" + m["country"] + ")" if m.get("country") else "")
+print("%-44s %4s chunks  last %s  %-16s %-26s %-12s %s" % (sess, c, last, m.get("name", "")[:16], place[:26], m.get("build", "")[:12], m.get("gpu", "")[:40]))' "$sess" "$c" "$last"
+    done
     exit 0
   fi
   sess="$2"; keys=$(echo "$all" | awk '{print $3}' | { grep "/$sess/" || true; })
