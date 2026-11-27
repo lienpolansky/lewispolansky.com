@@ -151,7 +151,21 @@ h1 .full { font: 400 14px/1.5 'IBM Plex Sans', sans-serif; color: var(--mut); te
 .tabnote b { color: var(--ink); font-weight: 600; }
 
 /* below the fold */
-.below { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 48px; padding: 64px 24px; }
+.sys { padding-bottom: 64px; }
+.sys h2 { margin-top: 0; }
+.sysreq { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; background: var(--panel); }
+.sysreq th, .sysreq td { text-align: left; vertical-align: top; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.sysreq tbody tr:last-child th, .sysreq tbody tr:last-child td { border-bottom: 0; }
+.sysreq thead th { font: 600 16px/1.5 'IBM Plex Sans', sans-serif; color: var(--ink); width: 42%; }
+.sysreq thead th:first-child { width: 16%; }
+.sysreq tbody th { font: 600 12px/1.75 'IBM Plex Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--mut); }
+.sysreq td { color: var(--mut); }
+.sysreq small { display: none; font: 600 12px/1.5 'IBM Plex Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--mut); margin-top: 2px; }
+.sysreq .mine { background: var(--panel2); color: var(--ink); }
+.sysreq thead .mine { box-shadow: inset 0 2px 0 var(--ink); }
+.sysreq thead .mine small { display: block; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.below { padding: 64px 24px; }
 h2 { font: 600 12px 'IBM Plex Sans', sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 48px 0 16px; }
 section:first-child > h2:first-child, aside > h2:first-child { margin-top: 0; }
 .about p { margin-bottom: 16px; max-width: 66ch; }
@@ -171,16 +185,14 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .tabs button { padding: 4px 16px; font: 600 14px/1.5 'IBM Plex Sans', sans-serif; background: var(--panel); color: var(--mut); border: 1px solid var(--line2); cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--gold); }
-.req { background: var(--panel); padding: 16px 24px; margin-bottom: 8px; }
-.req h3 { font: 600 16px/1.5 'IBM Plex Sans', sans-serif; margin-bottom: 8px; }
-.req dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 14px; line-height: 1.5; }
-.req dt { color: var(--mut); }
 .note { color: var(--mut); font-size: 14px; line-height: 1.5; margin-top: 8px; }
 .foot { border-top: 1px solid var(--line); color: var(--mut); font-size: 12px; padding: 24px 24px 48px; }
 
 @media (max-width: 860px) {
   .wrap, .below { padding-left: 16px; padding-right: 16px; }
-  .store, .below { grid-template-columns: 1fr; }
+  .store { grid-template-columns: 1fr; }
+  .sysreq th, .sysreq td { padding: 8px; }
+  .sysreq thead th:first-child { width: 22%; }
   .strip { grid-auto-columns: 30%; }
   .feat { grid-template-columns: 1fr 1fr; }
   .info { grid-template-columns: 1fr; }
@@ -267,20 +279,21 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
         <li><img class="fimg" src="media/t_cake_seat.jpg" alt="" width="1600" height="900" loading="lazy"><div class="fbody"><svg class="fi" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="currentColor" d="M477.7 288c-15.5 108.6-108.9 192-221.7 192-123.7 0-224-100.3-224-224 0-10.3 .7-20.5 2.1-30.5l36.3 27.3 4.3 3.2 46.7 0 38.6 38.6 0 64 4.7 4.7 27.3 27.3 0 57.4 96 0 0-41.4 59.3-59.3 4.7-4.7 0-102.6-137.4 0-22.6-22.6 0-9.4 80 0 0-54.6-4.7-4.7-27.3-27.3 0-2.7 27.3-27.3 4.7-4.7 0-54.1c69.9 4.9 130.9 41.9 168.5 96.3l-51.8 51.8-4.7 4.7 0 102.6 93.7 0zM457.2 157.4C471.8 187.2 480 220.6 480 256l-64 0 0-57.4 41.2-41.2zM41.5 191.1C67.9 104 145.9 39.2 240 32.6l0 40.8-27.3 27.3-4.7 4.7 0 29.3 4.7 4.7 27.3 27.3 0 9.4-80 0 0 54.6 4.7 4.7 32 32 4.7 4.7 118.6 0 0 57.4-59.3 59.3-4.7 4.7 0 22.6-32 0 0-38.6-4.7-4.7-27.3-27.3 0-64-4.7-4.7-48-48-4.7-4.7-49.3 0-43.8-32.9zM256 512a256 256 0 1 0 0-512 256 256 0 1 0 0 512z"/></svg><b>One shared town</b><span>What you buy stays bought.</span></div></li>
       </ul>
     </section>
-    <aside>
-      <h2>System requirements</h2>
-      <div class="req"><h3>Mac</h3><dl>
-        <dt>Minimum</dt><dd>A Mac with an Apple chip (M1 or later), 8 GB memory, macOS 12 Monterey or later</dd>
-        <dt>Recommended</dt><dd>An M-series Pro, Max or Ultra chip, 16 GB memory, macOS 14 or later</dd>
-        <dt>Disk</dt><dd>12 GB free</dd></dl></div>
-      <div class="req"><h3>Windows</h3><dl>
-        <dt>Minimum</dt><dd>Windows 10 64-bit, a 4-core processor, 8 GB memory, a graphics card with 2 GB and DirectX 12</dd>
-        <dt>Recommended</dt><dd>A 6-core processor, 16 GB memory, a graphics card with 8 GB (GeForce RTX 3060, Radeon RX 6600 or better)</dd>
-        <dt>Disk</dt><dd>12 GB free</dd></dl></div>
-      <p class="note">The game picks a picture level for your computer at first launch and steps it down by itself if it runs slow. It aims for 60 frames a second.</p>
-      <p class="note">Playing together needs an internet connection.</p>
-    </aside>
   </div>
+
+  <section class="wrap sys">
+    <h2>System requirements</h2>
+    <table class="sysreq" id="sysreq">
+      <thead><tr><th scope="col"><span class="vh">Level</span></th><th scope="col" data-p="mac">Mac<small>This computer</small></th><th scope="col" data-p="windows">Windows<small>This computer</small></th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Minimum</th><td data-p="mac">A Mac with an Apple chip (M1 or later), 8 GB memory, macOS 12 Monterey or later</td><td data-p="windows">Windows 10 64-bit, a 4-core processor, 8 GB memory, a graphics card with 2 GB and DirectX 12</td></tr>
+        <tr><th scope="row">Recommended</th><td data-p="mac">An M-series Pro, Max or Ultra chip, 16 GB memory, macOS 14 or later</td><td data-p="windows">A 6-core processor, 16 GB memory, a graphics card with 8 GB (GeForce RTX 3060, Radeon RX 6600 or better)</td></tr>
+        <tr><th scope="row">Disk</th><td data-p="mac">12 GB free</td><td data-p="windows">12 GB free</td></tr>
+      </tbody>
+    </table>
+    <p class="note">The game picks a picture level for your computer at first launch and steps it down by itself if it runs slow. It aims for 60 frames a second.</p>
+    <p class="note">Playing together needs an internet connection.</p>
+  </section>
 </main>
 <footer class="foot wrap" id="foot">Made in South Pasadena.</footer>
 
@@ -323,6 +336,9 @@ document.addEventListener('keydown', function (e) {
   SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', s[1]); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="" width="160" height="90">'; b.onclick = function () { show(k); }; strip.appendChild(b); });
   show(0);
 })();
+
+// System requirements: the column for this computer is lit.
+(function () { var m = where(), col = m === 'windows' ? 'windows' : m === 'mac-arm' ? 'mac' : ''; if (col) document.querySelectorAll('#sysreq [data-p="' + col + '"]').forEach(function (c) { c.classList.add('mine'); }); })();
 
 // Downloads and the passcode gate, as before: the link's code (?k=) is checked by the server, which sets a long-lived cookie and
 // sends the browser back here without it. gtad.json lists the builds; without the cookie it answers 401, and the page shows only
