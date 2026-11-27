@@ -113,8 +113,8 @@ h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(-
 .quiet .off { color: var(--mut); display: inline-flex; align-items: center; gap: 8px; }
 .quiet svg { width: 14px; height: 14px; fill: currentColor; }
 .quiet .mono { font-size: 12px; color: var(--mut); }
-.phone { margin-top: 24px; max-width: 560px; padding: 8px 16px; border-left: 2px solid var(--gold); background: rgba(21,20,19,.85); font-size: 14px; }
-.ask { margin-top: 24px; max-width: 560px; padding: 16px; border-left: 2px solid var(--gold); background: rgba(21,20,19,.85); font-size: 16px; }
+.phone { margin-top: 24px; max-width: 560px; padding: 8px 16px; border-left: 2px solid var(--mut); background: rgba(21,20,19,.85); font-size: 14px; }
+.ask { margin-top: 24px; max-width: 560px; padding: 16px; border-left: 2px solid var(--mut); background: rgba(21,20,19,.85); font-size: 16px; }
 .ask small { display: block; color: var(--mut); font-size: 14px; margin-top: 4px; }
 .first { margin-top: 24px; max-width: 560px; border-top: 1px solid rgba(255,255,255,.12); padding-top: 8px; font-size: 14px; }
 .first summary { cursor: pointer; padding: 8px 0; color: var(--ink); font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }
@@ -127,19 +127,19 @@ h1 .full, .mark .full { font: 400 15px 'IBM Plex Sans', sans-serif; color: var(-
 
 /* below the fold */
 .below { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 20px; padding: 28px 24px 60px; }
-h2 { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 26px 0 12px; }
+h2 { font: 600 12px 'IBM Plex Sans', sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 26px 0 12px; }
 section:first-child > h2:first-child, aside > h2:first-child { margin-top: 0; }
 .about p { margin-bottom: 10px; max-width: 66ch; }
 .lead { font: 400 clamp(22px, 2.6vw, 30px)/1.12 'Anton', sans-serif; letter-spacing: .01em; margin-bottom: 12px; }
-.lead em { font-style: normal; color: var(--gold); }
+.lead em { font-style: normal; color: var(--ink); }
 .feat { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .feat li { background: var(--panel); border: 1px solid var(--line); padding: 16px 14px; }
-.feat .fi { width: 34px; height: 34px; fill: var(--gold); display: block; margin-bottom: 10px; }
+.feat .fi { width: 34px; height: 34px; fill: var(--mut); display: block; margin-bottom: 10px; }
 .feat b { display: block; font-weight: 600; margin-bottom: 2px; }
 .feat span { color: var(--mut); font-size: 13.5px; }
 ol.steps { list-style: none; padding: 0; counter-reset: s; }
 ol.steps li { counter-increment: s; position: relative; padding: 0 0 10px 38px; }
-ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 26px; height: 26px; background: var(--gold); color: #1a1509; font: 400 15px 'Anton', sans-serif; display: flex; align-items: center; justify-content: center; }
+ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 26px; height: 26px; background: var(--panel2); color: var(--ink); font: 400 15px 'Anton', sans-serif; display: flex; align-items: center; justify-content: center; }
 .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .tabs button { padding: 6px 12px; font: 500 12px 'IBM Plex Mono', monospace; background: var(--panel); color: var(--mut); border: 1px solid var(--line); cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--gold); }
