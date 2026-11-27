@@ -152,7 +152,7 @@ ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; 
   <div class="wrap store">
     <div>
       <div class="stage" id="stage">
-        <video id="film" src="media/trailer.mp4" poster="media/trailer_poster.jpg" controls muted playsinline preload="metadata"></video>
+        <video id="film" src="media/trailer.mp4?v=cut1" poster="media/trailer_poster.jpg?v=cut1" controls muted playsinline preload="metadata"></video>
         <button class="sound" id="sound" type="button"><svg viewBox="0 0 640 512" aria-hidden="true"><path d="M533 98c-10-9-25-8-34 2s-8 25 2 34c34 31 55 76 55 126s-21 95-55 126c-10 9-11 24-2 34s24 11 34 2c44-40 71-97 71-162s-27-122-71-162zM473 166c-10-9-25-8-34 2s-8 25 2 34c16 14 25 35 25 58s-9 44-25 58c-10 9-11 24-2 34s24 11 34 2c26-23 41-57 41-94s-15-71-41-94zM301 35c-11-5-25-3-34 5L132 160H64c-35 0-64 29-64 64v64c0 35 29 64 64 64h68l135 120c9 8 23 10 34 5s19-16 19-29V64c0-13-7-24-19-29z"/></svg>Sound on</button>
         <span class="tag" id="stagetag">Trailer</span>
       </div>
@@ -243,7 +243,7 @@ function show(i) {
   film.pause(); film.hidden = true; sound.hidden = true; var im = document.createElement('img'); im.src = SHOTS[i - 1][0]; im.alt = SHOTS[i - 1][1]; stage.insertBefore(im, tag); tag.textContent = SHOTS[i - 1][1];
 }
 (function () {
-  var t = document.createElement('button'); t.innerHTML = '<img src="media/trailer_poster.jpg" alt=""><span class="play">Trailer</span>'; t.onclick = function () { show(0); }; strip.appendChild(t);
+  var t = document.createElement('button'); t.innerHTML = '<img src="media/trailer_poster.jpg?v=cut1" alt=""><span class="play">Trailer</span>'; t.onclick = function () { show(0); }; strip.appendChild(t);
   SHOTS.forEach(function (s, k) { var b = document.createElement('button'); b.innerHTML = '<img loading="lazy" src="' + s[0] + '" alt="' + s[1].replace(/"/g, '&quot;') + '">'; b.onclick = function () { show(k + 1); }; strip.appendChild(b); });
   show(0);
 })();
