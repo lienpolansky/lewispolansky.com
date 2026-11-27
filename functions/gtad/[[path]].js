@@ -11,6 +11,8 @@
 // on. The page and its pictures are this site's own files (public/gtad). POST /gtad/stats keeps one opt-in performance report
 // per file under stats/ in the bucket: no address, no name, never served back.
 //
+// /gtad/towns lists the open towns games are hosting (towns(), below), behind the same token.
+//
 // Where the bindings are set: BUCKET (the R2 bucket "gtad") and the secret PASSCODE are in the Pages project's production
 // settings (lewispolansky-static), not in a wrangler file, so nothing else about the site's deploy changes.
 
@@ -26,6 +28,7 @@ export async function onRequest({ request, env, next }) {
   if (key === "index.html" && url.searchParams.has("k") && (request.method === "GET" || request.method === "HEAD")) return linkCode(request, env, url);
   if (key === "unlock") return request.method === "POST" ? unlock(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   if (key === "log") return request.method === "POST" ? log(request, env, url) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  if (key === "towns") return towns(request, env, url);
   if (key === "bug") return request.method === "POST" ? bug(request, env) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   if (key === "stats") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
@@ -33,7 +36,7 @@ export async function onRequest({ request, env, next }) {
     return stats(request, env);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
-  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/") || key.startsWith("bugs/") || key.startsWith("logs/")) return new Response("Not found", { status: 404 });
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/.test(key) || key.includes("..") || key.startsWith("stats/") || key.startsWith("bugs/") || key.startsWith("logs/") || key.startsWith("towns/")) return new Response("Not found", { status: 404 });
   if (LOCKED(key) && !(await allowed(request, env))) return new Response("Ask Lewis for the link", { status: 401, headers: { "Cache-Control": "no-store" } });
   if (FROM_BUCKET(key) && env.BUCKET) { const r = await serve(request, env, key); if (r) return r; }
   if (key.startsWith("builds/") || key.startsWith("manifest")) return new Response("Not found", { status: 404 });
@@ -62,9 +65,9 @@ async function allowed(request, env) {
 
 // A few tries a minute from one place, kept only in this copy's memory (Pages has no shared limiter); nothing is written down.
 const tries = new Map();
-function limited(request, most) {
-  const who = request.headers.get("CF-Connecting-IP") || "unknown", now = Date.now(), t = (tries.get(who) || []).filter(x => now - x < 60000);
-  t.push(now); tries.set(who, t); if (tries.size > 5000) tries.clear(); return t.length > most;
+function limited(request, most, seen = tries) {
+  const who = request.headers.get("CF-Connecting-IP") || "unknown", now = Date.now(), t = (seen.get(who) || []).filter(x => now - x < 60000);
+  t.push(now); seen.set(who, t); if (seen.size > 5000) seen.clear(); return t.length > most;
 }
 
 async function linkCode(request, env, url) {
@@ -128,6 +131,56 @@ async function readCapped(request, most) {
 // Stored in the bucket at bugs/<UTC date>/<HHMMSS>-<player>-<6 hex>/report.json and shot.jpg; never served back from here.
 // At most 30 an hour from one address, counted in the ledger's D1 (the hashed address only).
 const MOST_BUG_REPORT = 512 * 1024, MOST_SHOT = 3 * 1024 * 1024, MOST_BUG_BODY = 5 * 1024 * 1024, BUGS_AN_HOUR = 30;
+// Global towns (net-2's contract for 0.12.4). A game hosting an open town POSTs it every 20 s; GET lists those heard from in the
+// last 60 s, oldest dropped and deleted; DELETE /gtad/towns?town=<id> takes one off. All three need the game's token (X-Gtad-Token
+// or ?t=). One small object per town under towns/ in the bucket, never served by any other path. Stored with Cloudflare's region
+// and country of the host, never the address or the city.
+//   POST {"town":"29b91774","host":"Lewis","players":2,"max":12,"build":"0.12.4 (abc1234)","protocol":12,"code":"7R8CFN"} -> 204
+//   GET -> 200 {"towns":[{town,host,players,max,build,protocol,code,region,country,age}]}, age in seconds since last heard
+const TOWN_LIFE = 60000, TOWN_BODY = 2048, townTries = new Map();
+function townFrom(o) {
+  if (!o || typeof o !== "object") return "body";
+  if (typeof o.town !== "string" || !/^[0-9a-f]{8}$/.test(o.town)) return "town";
+  const host = typeof o.host === "string" ? o.host.trim() : ""; if (!host || [...host].length > 16 || /[\u0000-\u001f\u007f]/.test(host)) return "host";
+  for (const k of ["players", "max"]) if (!Number.isInteger(o[k]) || o[k] < 1 || o[k] > 12) return k;
+  if (typeof o.build !== "string" || o.build.length > 40 || /[^\x20-\x7e]/.test(o.build)) return "build";
+  if (!Number.isInteger(o.protocol) || o.protocol < 0 || o.protocol > 1e6) return "protocol";
+  if (typeof o.code !== "string" || !/^[A-Z0-9]{6}$/.test(o.code)) return "code";
+  return { town: o.town, host, players: o.players, max: o.max, build: o.build, protocol: o.protocol, code: o.code };
+}
+async function towns(request, env, url) {
+  if (!["GET", "POST", "DELETE"].includes(request.method)) return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, POST, DELETE" } });
+  if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "no towns yet" }, 503);
+  const token = request.headers.get("X-Gtad-Token") || url.searchParams.get("t") || "";
+  if (!same(token, await updaterToken(env.PASSCODE))) return new Response("Ask Lewis for the link", { status: 401, headers: { "Cache-Control": "no-store" } });
+  if (limited(request, 120, townTries)) return bugJson({ ok: false, error: "slow down" }, 429);
+  if (request.method === "DELETE") {
+    const id = url.searchParams.get("town") || ""; if (!/^[0-9a-f]{8}$/.test(id)) return bugJson({ ok: false, error: "bad request", why: "town" }, 400);
+    await env.BUCKET.delete(`towns/${id}.json`); return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  }
+  if (request.method === "POST") {
+    if (Number(request.headers.get("Content-Length") || 0) > TOWN_BODY) return bugJson({ ok: false, error: "too big", most: TOWN_BODY }, 413);
+    const text = await request.text(); if (text.length > TOWN_BODY) return bugJson({ ok: false, error: "too big", most: TOWN_BODY }, 413);
+    let o; try { o = JSON.parse(text); } catch { return bugJson({ ok: false, error: "bad request", why: "json" }, 400); }
+    const t = townFrom(o); if (typeof t === "string") return bugJson({ ok: false, error: "bad request", why: t }, 400);
+    const cf = request.cf || {}, entry = { ...t, region: String(cf.region || "").slice(0, 80), country: String(cf.country || "").slice(0, 8), seen: Date.now() };
+    await env.BUCKET.put(`towns/${t.town}.json`, JSON.stringify(entry), { httpMetadata: { contentType: "application/json" } });
+    return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  }
+  const now = Date.now(), out = [], stale = []; let cursor;
+  do {
+    const page = await env.BUCKET.list({ prefix: "towns/", cursor }); cursor = page.truncated ? page.cursor : undefined;
+    for (const ob of page.objects) {
+      const got = await env.BUCKET.get(ob.key); let e = null; try { e = got ? JSON.parse(await got.text()) : null; } catch { e = null; }
+      if (!e || typeof e.seen !== "number" || now - e.seen > TOWN_LIFE) { stale.push(ob.key); continue; }
+      const { seen, ...rest } = e; out.push({ ...rest, age: Math.max(0, Math.round((now - seen) / 1000)) });
+    }
+  } while (cursor);
+  if (stale.length) await env.BUCKET.delete(stale);
+  out.sort((a, b) => a.age - b.age || a.town.localeCompare(b.town));
+  return bugJson({ towns: out }, 200);
+}
+
 const bugJson = (o, status) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 async function bug(request, env) {
   if (!env.BUCKET || !env.PASSCODE) return bugJson({ ok: false, error: "not taking reports yet" }, 503);
