@@ -259,7 +259,7 @@ var SETUP_STEPS = {
 }, SETUP = {};
 // An installer in beta stays a small "New: installer (beta)" link under the zip; otherwise it is the big button. gtad.json says
 // which ("installerBeta": true or false, on the build or at the top for Windows), so it flips without a deploy. If it says
-// nothing, both installers lead. The Windows Setup always leads now (the owner's call, 2026-11-27), whatever gtad.json says.
+// nothing, both installers lead. The Windows Setup stays a small beta link under the zip until its download step is fixed (2026-11-27: it failed on a friend's PC).
 var BETA_DEFAULT = { windows: false, mac: false }, LEAD_WITH_INSTALLER = {};
 var STEPS = {
   mac: ['Open the <b>zip</b> you downloaded. Your Mac unpacks it next to it.', 'Drag <b>Grand Towing and Delivery</b> into Applications.', 'Open the game once. Your Mac says it cannot verify it: click <b>Done</b>.', 'Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to Grand Towing and Delivery. Confirm with your password or Touch ID.', 'From then on it opens normally.'],
@@ -270,7 +270,7 @@ var EXE = 'Grand Towing and Delivery.exe';
 function exeFor(v) { return /^0\.(\d|10)\./.test(v || '') ? 'SF Bayside.exe' : 'Grand Towing and Delivery.exe'; }
 var size = function (b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; };
 function tidy(d) { LEAD_WITH_INSTALLER = {}; var b = {}; Object.keys((d && d.builds) || {}).forEach(function (k) { var x = d.builds[k] || {}; var ins = x.installer && x.installer.url ? { url: x.installer.url, bytes: x.installer.size || 0, name: x.installer.name || '' } : null, plat = (ALIAS[k] || k) === 'windows' ? 'windows' : 'mac';
-    var beta = plat === 'windows' && ins ? false : typeof x.installerBeta === 'boolean' ? x.installerBeta : x.installer && typeof x.installer.beta === 'boolean' ? x.installer.beta : plat === 'windows' && d && typeof d.installerBeta === 'boolean' ? d.installerBeta : BETA_DEFAULT[plat];
+    var beta = plat === 'windows' && ins ? true : typeof x.installerBeta === 'boolean' ? x.installerBeta : x.installer && typeof x.installer.beta === 'boolean' ? x.installer.beta : plat === 'windows' && d && typeof d.installerBeta === 'boolean' ? d.installerBeta : BETA_DEFAULT[plat];
     if (ins) LEAD_WITH_INSTALLER[plat] = !beta; b[ALIAS[k] || k] = { url: x.url || '', bytes: x.bytes || x.size || 0, version: x.version || (d && d.version) || '', installer: ins }; }); return { version: (d && d.version) || '', builds: b }; }      // a build may carry its own version (one platform can lead the other)
 function where() {
   var ua = navigator.userAgent || '', p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
